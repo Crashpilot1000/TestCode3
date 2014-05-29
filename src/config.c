@@ -257,7 +257,7 @@ static void resetConf(void)
     cfg.gps_ins_vel               = 0.5f;       // Crashpilot GPS INS The LOWER the value the closer to gps speed // Dont go to high here
     cfg.gps_lag                   = 500;        // GPS Lag in ms
     cfg.gps_ph_minsat             = 6;          // Minimal Satcount for PH, PH on RTL is still done with 5Sats or more
-    cfg.gps_expo                  = 8;          // 1 - 99 % defines the actual Expo applied for GPS
+    cfg.gps_expo                  = 6;          // 1 - 99 % defines the actual Expo applied for GPS
     cfg.gps_ph_settlespeed        = 100;        // 1 - 200 cm/s PH settlespeed in cm/s
     cfg.gps_ph_brakemaxangle      = 15;         // 1 - 45 Degree Maximal Overspeedbrake
     cfg.gps_ph_minbrakepercent    = 50;         // 1 - 99% minimal percent of "brakemaxangle" left over for braking. Example brakemaxangle = 6 so 50 Percent is 3..
