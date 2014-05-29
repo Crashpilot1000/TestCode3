@@ -96,11 +96,11 @@ static void resetConf(void)
 //    featureSet(FEATURE_PASS);                   // Just pass Throttlechannel
 //    featureSet(FEATURE_SONAR);
 
-    cfg.P8[ROLL]                  =  32;        // 40
+    cfg.P8[ROLL]                  =  30;        // 40
     cfg.I8[ROLL]                  =  30;
     cfg.D8[ROLL]                  =  30;
 
-    cfg.P8[PITCH]                 =  32;        // 40
+    cfg.P8[PITCH]                 =  30;        // 40
     cfg.I8[PITCH]                 =  30;
     cfg.D8[PITCH]                 =  30;
 
