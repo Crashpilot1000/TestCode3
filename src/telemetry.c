@@ -1,5 +1,6 @@
 /*
  * FrSky Telemetry implementation by silpstream @ rcgroups
+ * GPS modification Crashpilot
  */
 #include "board.h"
 #include "mw.h"
@@ -61,9 +62,8 @@ static void sendTelemetryTail(void)
     uartWrite(PROTOCOL_TAIL);
 }
 
-static void serializeFrsky(uint8_t data)
+static void serializeFrsky(uint8_t data)            // take care of byte stuffing
 {
-    // take care of byte stuffing
     if (data == 0x5e)
     {
         uartWrite(0x5d);
@@ -74,8 +74,7 @@ static void serializeFrsky(uint8_t data)
         uartWrite(0x5d);
         uartWrite(0x3d);
     }
-    else
-        uartWrite(data);
+    else uartWrite(data);
 }
 
 static void serialize16(int16_t a)
@@ -89,21 +88,21 @@ static void serialize16(int16_t a)
 
 static void sendAccel(void)
 {
-    int i;
-
+    uint8_t i;
     for (i = 0; i < 3; i++)
     {
         sendDataHead(ID_ACC_X + i);
-        serialize16((int16_t)(((int32_t)accSmooth[i] * 1000) / cfg.sens_1G)); // accSmooth*1000/cfg.sens_1G
+        serialize16((int16_t)(((int32_t)accSmooth[i] * 1000) / sens_1G));
     }
 }
 
 static void sendBaro(void)
 {
+    int32_t tmp = max((int32_t)EstAlt, 0);
     sendDataHead(ID_ALTITUDE_BP);
-    serialize16((int32_t)EstAlt / 100);
+    serialize16(tmp / 100);
     sendDataHead(ID_ALTITUDE_AP);
-    serialize16((int32_t)EstAlt % 100);
+    serialize16(tmp % 100);
 }
 
 static void sendTemperature1(void)
@@ -114,30 +113,51 @@ static void sendTemperature1(void)
 
 static void sendTime(void)
 {
-    uint32_t seconds = millis() / 1000;
+    uint32_t seconds = currentTimeMS / 1000;    
     uint8_t minutes = (seconds / 60) % 60;
-
-    // if we fly for more than an hour, something's wrong anyway
-    sendDataHead(ID_HOUR_MINUTE);
+    sendDataHead(ID_HOUR_MINUTE);                   // if we fly for more than an hour, something's wrong anyway
     serialize16(minutes << 8);
     sendDataHead(ID_SECOND);
     serialize16(seconds % 60);
 }
 
+// Mwii: dddddddddd
+// Frsky pdf: dddmm.mmmm
+static void GPStoDDDMM_MMMM(int32_t mwiigps, int16_t *dddmm, int16_t *mmmm)
+{
+    int32_t absgps, deg, min;
+    if(mwiigps == GPSErrorVal)
+    {
+        *dddmm = 0;
+        *mmmm  = 0;
+    }
+    else
+    {
+        absgps = abs(mwiigps);
+        deg    = absgps / 10000000;
+        absgps = (absgps - deg * 10000000) * 60;    // absgps = Minutes left * 10^7
+        min    = absgps / 10000000;                 // minutes left
+        *dddmm = deg * 100 + min;
+        *mmmm  = (absgps - min * 10000000) / 1000;
+    }
+}
+
 static void sendGPS(void)
 {
+    int16_t tmp1, tmp2;
+    GPStoDDDMM_MMMM(Real_GPS_coord[LAT], &tmp1, &tmp2);
     sendDataHead(ID_LATITUDE_BP);
-    serialize16(abs(Real_GPS_coord[LAT]) / 100000);
+    serialize16(tmp1);
     sendDataHead(ID_LATITUDE_AP);
-    serialize16((abs(Real_GPS_coord[LAT]) / 10) % 10000);
-
+    serialize16(tmp2);
     sendDataHead(ID_N_S);
     serialize16(Real_GPS_coord[LAT] < 0 ? 'S' : 'N');
 
+    GPStoDDDMM_MMMM(Real_GPS_coord[LON], &tmp1, &tmp2);
     sendDataHead(ID_LONGITUDE_BP);
-    serialize16(abs(Real_GPS_coord[LON]) / 100000);
+    serialize16(tmp1);
     sendDataHead(ID_LONGITUDE_AP);
-    serialize16((abs(Real_GPS_coord[LON]) / 10) % 10000);
+    serialize16(tmp2);
     sendDataHead(ID_E_W);
     serialize16(Real_GPS_coord[LON] < 0 ? 'W' : 'E');
 }
@@ -147,6 +167,11 @@ static void sendGPS(void)
  *
  * NOTE: This sends voltage divided by batteryCellCount. To get the real
  * battery voltage, you need to multiply the value by batteryCellCount.
+ * Note: Fuck the pdf. Format for Voltage Data for single cells is like this:
+ *  llll llll cccc hhhh
+ *  l: Low voltage bits
+ *  h: High voltage bits
+ *  c: Cell number (starting at 0)
  */
 static void sendVoltage(void)
 {
@@ -154,45 +179,22 @@ static void sendVoltage(void)
     uint16_t cellNumber;
     uint32_t cellVoltage;
     uint16_t payload;
-
-    /*
-     * Note: Fuck the pdf. Format for Voltage Data for single cells is like this:
-     *
-     *  llll llll cccc hhhh
-     *  l: Low voltage bits
-     *  h: High voltage bits
-     *  c: Cell number (starting at 0)
-     */
+ 
     cellVoltage = vbat / batteryCellCount;
-
-    // Map to 12 bit range
-    cellVoltage = (cellVoltage * 2100) / 42;
-
-    cellNumber = currentCell % batteryCellCount;
-
-    // Cell number is at bit 9-12
-    payload = (cellNumber << 4);
-
-    // Lower voltage bits are at bit 0-8
-    payload |= ((cellVoltage & 0x0ff) << 8);
-
-    // Higher voltage bits are at bits 13-15
-    payload |= ((cellVoltage & 0xf00) >> 8);
-
+    cellVoltage = (cellVoltage * 2100) / 42;        // Map to 12 bit range
+    cellNumber  = currentCell % batteryCellCount;
+    payload     = (cellNumber << 4);                // Cell number is at bit 9-12
+    payload    |= ((cellVoltage & 0x0ff) << 8);     // Lower voltage bits are at bit 0-8
+    payload    |= ((cellVoltage & 0xf00) >> 8);     // Higher voltage bits are at bits 13-15
     sendDataHead(ID_VOLT);
     serialize16(payload);
-
     currentCell++;
     currentCell %= batteryCellCount;
 }
 
-/*
- * Send voltage with ID_VOLTAGE_AMP
- */
-static void sendVoltageAmp()
+static void sendVoltageAmp()                        // Send voltage with ID_VOLTAGE_AMP
 {
     uint16_t voltage = (vbat * 110) / 21;
-
     sendDataHead(ID_VOLTAGE_AMP_BP);
     serialize16(voltage / 100);
     sendDataHead(ID_VOLTAGE_AMP_AP);
@@ -201,8 +203,10 @@ static void sendVoltageAmp()
 
 static void sendHeading(void)
 {
+    int16_t tmp1 = heading;
+    if (tmp1 < 0) tmp1 += 360;                      // heading in degrees, in compass units (0..360, 0=north)
     sendDataHead(ID_COURSE_BP);
-    serialize16((int16_t)heading);
+    serialize16(tmp1);
     sendDataHead(ID_COURSE_AP);
     serialize16(0);
 }
@@ -241,34 +245,29 @@ void sendFRSKYTelemetry(void)
         lastCycleTime = currentTimeMS;
         cycleNum++;
 
-        // Sent every 125ms
-        sendAccel();
+        sendAccel();                                // Sent every 125ms
         sendTelemetryTail();
 
-        if ((cycleNum % 4) == 0)        // Sent every 500ms
+        if ((cycleNum % 4) == 0)                    // Sent every 500ms
         {
             sendBaro();
             sendHeading();
             sendTelemetryTail();
         }
 
-        if ((cycleNum % 8) == 0)        // Sent every 1s
+        if ((cycleNum % 8) == 0)                    // Sent every 1s
         {
             sendTemperature1();
-
             if (feature(FEATURE_VBAT))
             {
                 sendVoltage();
                 sendVoltageAmp();
             }
-
-            if (sensors(SENSOR_GPS))
-                sendGPS();
-
+            if (sensors(SENSOR_GPS)) sendGPS();
             sendTelemetryTail();
         }
 
-        if (cycleNum == 40)       //Frame 3: Sent every 5s
+        if (cycleNum == 40)                         //Frame 3: Sent every 5s
         {
             cycleNum = 0;
             sendTime();
