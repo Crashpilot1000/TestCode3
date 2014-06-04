@@ -126,7 +126,7 @@ static void sendTime(void)
 static void GPStoDDDMM_MMMM(int32_t mwiigps, int16_t *dddmm, int16_t *mmmm)
 {
     int32_t absgps, deg, min;
-    if(mwiigps == GPSErrorVal)
+    if(!mwiigps)
     {
         *dddmm = 0;
         *mmmm  = 0;
