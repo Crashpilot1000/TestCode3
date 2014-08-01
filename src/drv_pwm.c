@@ -430,36 +430,29 @@ static void ppmCallback(uint8_t port, uint16_t capture)
 }
 */
 
-/*
-This altered ppmCallback is to fix the 18ms for 8 channel ppsum problem with older Frsky RX.
-For more info about the problem:
-http://diydrones.com/profiles/blogs/why-frsky-cppm-signal-is-so-disappointing
-http://forums.openpilot.org/topic/16146-cc3d-with-frsky-8-channels-in-cppm-mode/
-My fix does an autodetection. If the problem is found it is fixed.
-I tested it on Frsky D8R-II and Frsky D4FR - no sync loss on all maxed out channels situations anymore.
-Cheers Crashpilot/Rob
-*/
-
+// Contains detection & fix for the "8 channels in 18ms Frsky problem" see:
+// http://diydrones.com/profiles/blogs/why-frsky-cppm-signal-is-so-disappointing
+// http://forums.openpilot.org/topic/16146-cc3d-with-frsky-8-channels-in-cppm-mode/
+// Tested on: Frsky D8R-II and Frsky D4FR
 static void ppmCallback(uint8_t port, uint16_t capture)
 {
     uint16_t        newval = capture;
     static uint16_t last   = 0, frametime = 0;
-    static uint8_t  chan   = 0, FrSkyCnt  = 0, FRSKY18ms = 0;                       // Frsky 18ms on 8 Channel Problem Autodetection
+    static uint8_t  chan   = 0, frsky_problemcnt = 0;                               // Frsky 18ms on 8 Channel Problem Autodetection
     uint16_t        diff   = newval - last;
     bool            sync   = diff > 2700;                                           // rcgroups.com/forums/showpost.php?p=21996147&postcount=3960 "So, if you use 2.5ms or higher as being the reset for the PPM stream start, you will be fine. I use 2.7ms just to be safe."
     last = newval;
 
-    if(FRSKY18ms) sync |= chan == 8;                                                // FrSky 18ms Fix, force sync after 8 channels
+    if(frsky_problemcnt == 30) sync |= chan == 8;                                   // FrSky 18ms Fix, force sync after 8 channels
     else frametime += diff;
 
     if (sync)
     {
-        if(!FRSKY18ms)
+        if(frsky_problemcnt != 30)
         {
-            if(frametime < 18300 && chan == 8) FrSkyCnt++;
-            else FrSkyCnt = 0;
-            if(FrSkyCnt == 30) FRSKY18ms = 1;                                       // Condition must be true 30 times in a row before we enable the FrSky fix
-            else frametime = 0;            
+            if(frametime < 18300 && chan == 8) frsky_problemcnt++;
+            else frsky_problemcnt = 0;
+            frametime = 0;            
         }
         chan = 0;
     }
