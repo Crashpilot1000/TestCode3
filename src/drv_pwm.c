@@ -438,7 +438,7 @@ static void ppmCallback(uint8_t port, uint16_t capture)
 {
     uint16_t        newval = capture;
     static uint16_t last   = 0, frametime = 0;
-    static uint8_t  chan   = 0, frsky_problemcnt = 0;                               // Frsky 18ms on 8 Channel Problem Autodetection
+    static uint8_t  chan   = 0, chan_order = 0, frsky_problemcnt = 0;               // Frsky 18ms on 8 Channel Problem Autodetection
     uint16_t        diff   = newval - last;
     bool            sync   = diff > 2700;                                           // rcgroups.com/forums/showpost.php?p=21996147&postcount=3960 "So, if you use 2.5ms or higher as being the reset for the PPM stream start, you will be fine. I use 2.7ms just to be safe."
     last = newval;
@@ -455,10 +455,15 @@ static void ppmCallback(uint8_t port, uint16_t capture)
             frametime = 0;            
         }
         chan = 0;
+        chan_order = 0;
     }
     else
     {
-        if (diff > 750 && diff < 2250 && chan < MAX_RC_CHANNELS) captures[chan] = diff;// 750 to 2250 ms is our 'valid' channel range
+        if (diff > 750 && diff < 2250 && chan == chan_order)                        // Only capture if channel order is correct and Range: 750 to 2250 ms
+        {
+            if(chan < MAX_RC_CHANNELS) captures[chan] = diff;                       // Wanted and presented channelnumbers can be different.
+            chan_order++;
+        }
         chan++;
         failsafeCnt = 0;
     }
