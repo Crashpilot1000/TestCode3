@@ -437,33 +437,33 @@ static void ppmCallback(uint8_t port, uint16_t capture)
 static void ppmCallback(uint8_t port, uint16_t capture)
 {
     uint16_t        newval = capture;
-    static uint16_t last   = 0, frametime = 0;
-    static uint8_t  chan   = 0, chan_order = 0, frsky_problemcnt = 0;               // Frsky 18ms on 8 Channel Problem Autodetection
-    uint16_t        diff   = newval - last;
-    bool            sync   = diff > 2700;                                           // rcgroups.com/forums/showpost.php?p=21996147&postcount=3960 "So, if you use 2.5ms or higher as being the reset for the PPM stream start, you will be fine. I use 2.7ms just to be safe."
+    static uint16_t last = 0, frametime = 0;
+    static uint8_t  chan = 0, goodcnt = 0, frsky_problemcnt = 0;                    // Frsky 18ms on 8 Channel Problem Autodetection
+    uint16_t        diff = newval - last;
+    bool            sync = diff > 2700;                                             // rcgroups.com/forums/showpost.php?p=21996147&postcount=3960 "So, if you use 2.5ms or higher as being the reset for the PPM stream start, you will be fine. I use 2.7ms just to be safe."
     last = newval;
 
-    if(frsky_problemcnt == 30) sync |= chan == 8;                                   // FrSky 18ms Fix, force sync after 8 channels
+    if (frsky_problemcnt == 30) sync |= goodcnt == 8;                               // FrSky 18ms Fix, force sync after 8 good channels in a row
     else frametime += diff;
 
     if (sync)
     {
-        if(frsky_problemcnt != 30)
+        if (frsky_problemcnt != 30)
         {
-            if(frametime < 18300 && chan == 8) frsky_problemcnt++;
+            if (frametime < 18300 && goodcnt == 8) frsky_problemcnt++;
             else frsky_problemcnt = 0;
             frametime = 0;            
         }
         chan = 0;
-        chan_order = 0;
+        goodcnt = 0;
     }
     else
     {
-        if (diff > 750 && diff < 2250 && chan == chan_order)                        // Only capture if channel order is correct and Range: 750 to 2250 ms
+        if (diff > 750 && diff < 2250 && goodcnt == chan)                           // Only capture if channel order is correct and Range: 750 to 2250 ms
         {
-            if(chan < MAX_RC_CHANNELS) captures[chan] = diff;                       // Wanted and presented channelnumbers can be different.
-            chan_order++;
-        }
+            if (chan < MAX_RC_CHANNELS) captures[chan] = diff;                      // Wanted and presented channelnumbers can be different.
+            goodcnt++;
+        } else goodcnt = 0;
         chan++;
         failsafeCnt = 0;
     }
