@@ -721,12 +721,17 @@ void loop(void)
         else GPS_angle[0] = GPS_angle[1] = 0;                                   // Zero GPS influence on the ground
         BlockGPSAngles = false;
 
-        RCfactor  = ACCDeltaTimeINS / (MainDptCut + ACCDeltaTimeINS);          // used for pt1 element
+        RCfactor  = ACCDeltaTimeINS / (MainDptCut + ACCDeltaTimeINS);           // used for pt1 element
+
+        //VERY DIRTY! IS ALREADY FIXED BUT NOT IN THIS UPLOAD BECAUSE DONE IN IMU PART THERE
+        tmp0flt  = (uint16_t)FLOATcycleTime & (uint16_t)0xFFFC;                 // Filter last 2 bit jitter
+        tmp0flt /= 3000.0f;
+        //VERY DIRTY! IS ALREADY FIXED BUT NOT IN THIS UPLOAD BECAUSE DONE IN IMU PART THERE
 
         tmp0  = ((int32_t)rcCommand[YAW] * (((int32_t)cfg.yawRate << 1) + 40)) >> 5;
-        error = (float)tmp0 - gyroData[YAW] * 0.25f;
+        error = tmp0 - ((int32_t)gyroData[YAW] >> 2);                           // Less Gyrojitter works actually better
         if (abs(tmp0) > 50) errorGyroI_YW = 0;
-        else errorGyroI_YW = constrain(errorGyroI_YW + (int32_t)(error * (float)cfg.I8[YAW] * (ACCDeltaTimeINS * 333.333f)), -268435454, 268435454);
+        else errorGyroI_YW = constrain(errorGyroI_YW + (int32_t)(error * (float)cfg.I8[YAW] * tmp0flt), -268435454, 268435454);
         axisPID[YAW] = constrain(errorGyroI_YW >> 13, -250, 250);
         PTermYW      = ((int32_t)error * (int32_t)cfg.P8[YAW]) >> 6;
         if(NumberOfMotors > 3)                                                  // Constrain YAW by D value if not servo driven in that case servolimits apply
