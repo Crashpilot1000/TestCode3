@@ -53,7 +53,6 @@ void computeIMU(void)
         Gyro_getADC();                                                        // Also feeds gyroData
         if (sensors(SENSOR_ACC)) ACC_getADC();
     }
-
     curT               = micros();
     ACCDeltaTimeINS    = (float)(curT - prevT) * 0.000001f;                   // ACCDeltaTimeINS is in seconds now
     ACCDeltaTimeINS    = constrain(ACCDeltaTimeINS, 0.0001f, 0.5f);           // Constrain to range 0,1ms - 500ms
@@ -140,10 +139,11 @@ static void getEstimatedAttitude(void)
         Tilt_25deg   = cosf(25.0f * RADX);
         INV_GY_CMPF  = 1.0f / (float)(cfg.gy_gcmpf + 1);                      // Default 400
         INV_GY_CMPFM = 1.0f / (float)(cfg.gy_mcmpf + 1);                      // Default 200
-        tmp[0]       = 0.5f / M_PI;
-        ACC_RC       = tmp[0] / cfg.acc_lpfhz;                                // Default 0,536 Hz
-        ACC_ALT_RC   = tmp[0] / (float)cfg.acc_altlpfhz;                      // Default 10 Hz
-        ACC_GPS_RC   = tmp[0] / (float)cfg.acc_gpslpfhz;                      // Default 5 Hz
+        if(!cfg.acc_lpfhz) cfg.acc_lpfhz = 0.001f;                            // Avoid DivByZero
+        ACC_RC       = RCconstPI / cfg.acc_lpfhz;                             // Default 0,536 Hz
+        ACC_ALT_RC   = RCconstPI / (float)cfg.acc_altlpfhz;                   // Default 10 Hz
+        ACC_GPS_RC   = RCconstPI / (float)cfg.acc_gpslpfhz;                   // Default 5 Hz
+
         for (i = 0; i < 3; i++)                                               // Preset some values to reduce runup time
         {
             accSmooth[i] = accADC[i];
@@ -216,7 +216,7 @@ static void getEstimatedAttitude(void)
     {
         tmp[0]  = ((-sp) * accADC[1] + sr * cp * accADC[0] + cp * cr * accADC[2]) - (float)cfg.sens_1G;
         cms[2] += (ACCDeltaTimeINS / (ACC_ALT_RC + ACCDeltaTimeINS)) * (tmp[0] * CmsFac - cms[2]);
-        vario  += cms[2];
+        vario  += cms[2] * constrain(TiltValue, 0.5f, 1.0f);                  // Empirical hightdrop reduction on tilt.
     }
 }
 
@@ -230,7 +230,7 @@ void getEstimatedAltitude(void)
     static int8_t   VarioTab[VarioTabsize];
     static uint8_t  Vidx = 0, IniStep = 0, IniCnt = 0;
     static uint32_t LastBarotime = 0;
-    static float    AvgHz = 0, LastEstAltBaro = 0, SNRcorrect, SNRavg = 0;
+    static float    AvgHz = 0.0f, LastEstAltBaro = 0.0f, SNRcorrect, SNRavg = 0.0f;
     float           NewVal, EstAltBaro;
     uint32_t        TimeTemp;
     uint8_t         i;
@@ -277,7 +277,7 @@ void getEstimatedAltitude(void)
             switch(SonarStatus)
             {
             case 0:
-                SNRavg  = 0;
+                SNRavg  = 0.0f;
                 IniStep = 0;
                 break;
             case 1:
@@ -322,47 +322,15 @@ void getAltitudePID(void)                                                     //
 {
     float ThrAngle;
     ThrAngle = constrain(TiltValue * 100.0f, 0, 100.0f);
-    BaroP    = BaroI = BaroD = 0;                                             // Reset the Pid, create something new, or not....
-    if (ThrAngle < 40 || UpsideDown) return;                                  // Don't do BaroPID if copter too tilted
-    BaroP = (int16_t)((float)cfg.P8[PIDALT]  * (AltHold - EstAlt) * 0.005f);
-    BaroI = (int16_t)(((float)cfg.I8[PIDALT] * vario) * 0.02f);               // BaroI = (int16_t)(((float)cfg.I8[PIDALT] * vario / ACCDeltaTimeINS) * 0.00006f); // That is actually a "D"
-    BaroD = (int16_t)((float)cfg.D8[PIDALT]  * (100.0f - ThrAngle) * 0.04f);  // That is actually the Tiltcompensation
+    if (ThrAngle < 40.0f || UpsideDown)                                       // Don't do BaroPID if copter too tilted
+    {
+        BaroP = BaroI = BaroD = 0.0f;
+    }
+    else
+    {
+        BaroP = (float)cfg.P8[PIDALT] * (AltHold - EstAlt) * 0.005f;
+        BaroI = (float)cfg.I8[PIDALT] * vario * 0.02f;                        // BaroI = (int16_t)(((float)cfg.I8[PIDALT] * vario / ACCDeltaTimeINS) * 0.00006f); // That is actually a "D"
+        BaroD = (float)cfg.D8[PIDALT] * (100.0f - ThrAngle) * 0.04f;          // That is actually the Tiltcompensation
+    }
 }
 #endif
-
-/*
-    tmp32 = (uint32_t)(sqrtf(tmp[2]) * 1.953125f + 0.5f);                     // For comparison Scale to 1G*1000
-    if (850 < tmp32 && tmp32 < 1150)                                          // Gyro drift correct between 0.85G - 1.15G
-    {
-      debug[0] = tmp32;
-        for (i = 0; i < 3; i++) EstG.A[i] = (EstG.A[i] * (float)cfg.gy_gcmpf + accSmooth[i]) * INV_GY_CMPF;
-    }else debug[0] = 0;
-
-if(GroundAltInitialized) vario += cmsLPF[2] * constrain(TiltValue + 0.05f, 0.5f, 1.0f); // Just do Vario when Baro completely initialized. Empirical hightdrop reduction on tilt.
-
-/////// GPS INS TESTCODE
-cfg.gps_ins_vel = (float)constrain(rcData[AUX3]-1000, 0, 1000) * 0.001f;
-debug[0]        = (int16_t)(cfg.gps_ins_vel * 1000.0f);
-
-
-
-cfg.acc_gpslpfhz = (float)constrain(rcData[AUX3] - 1000, 0, 1000) * 0.03f;
-debug[0]         = (int16_t)(cfg.acc_gpslpfhz * 10.0f);
-ACC_GPS_RC = 0.5f / (M_PI * (float)cfg.acc_gpslpfhz);
-
-//  Testcode
-    static uint32_t previous5HzT = 0;
-		flthead = 0;                                                              // if no mag do bodyframe below
-//  Testcode
-    int16_t knob = constrain(rcData[AUX3]-1000,0,1000);
-		float  knobbi= (float)knob * 0.001f;
-		debug[0] = knobbi * 1000;
-	  if (currentT > previous5HzT + 200000){
-        previous5HzT = currentT;
-		    VelNorth     = VelNorth * knobbi;
-        VelEast      = VelEast  * knobbi;
-		}
-		debug[1] = VelNorth;
-		debug[2] = VelEast;
-/////// GPS INS TESTCODE
-*/
