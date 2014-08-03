@@ -85,7 +85,7 @@ RC & LED:
    rc_motor = 1 esc_min will be applied, the pid regulation will be ACTIVE. That prevents tipovers in the air when thrstick down, but may cause tipovers on the ground.
    rc_motor = 2 esc_moff will be applied, that means motors are off then "motor stop".
    NOTE: Baromode and Autoland. Once copter is flying (decision upon that is based on surpassing esc_nfly) in Baromode, a thrstick down will trigger Autolanding, not motor stop.
-
+-  Fixed PPSUM readout to prevent channelmixup on error (even for just one ppsum frame). Fixed Frsky 18ms 8channel ppsum problem (you can also use the frsky 27ms FW)
 
 - RED LED:
 -- In GPS mode the red LED will ALWAYS count up the satcount starting by 5 followed by a 2 sec break. 2 blinks followed by 2sec break = 6 Sats.
