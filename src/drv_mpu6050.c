@@ -3,17 +3,24 @@
 
 // MPU6050, Standard address 0x68
 // MPU_INT on PB13 on rev4 hardware
-#define MPU6050_ADDRESS         0x68
-#define MPU_RA_SMPLRT_DIV       0x19
-#define MPU_RA_CONFIG           0x1A
-#define MPU_RA_GYRO_CONFIG      0x1B
-#define MPU_RA_ACCEL_CONFIG     0x1C
-#define MPU_RA_INT_PIN_CFG      0x37
-#define MPU_RA_ACCEL_XOUT_H     0x3B
-#define MPU_RA_TEMP_OUT_H       0x41
-#define MPU_RA_GYRO_XOUT_H      0x43
-#define MPU_RA_PWR_MGMT_1       0x6B
-#define MPU_RA_WHO_AM_I         0x75
+#define MPU6050_ADDRESS     0x68
+#define MPU_RA_SMPLRT_DIV   0x19
+#define MPU_RA_CONFIG       0x1A
+#define MPU_RA_GYRO_CONFIG  0x1B
+#define MPU_RA_ACCEL_CONFIG 0x1C
+#define MPU_RA_INT_PIN_CFG  0x37
+#define MPU_RA_ACCEL_XOUT_H 0x3B
+#define MPU_RA_TEMP_OUT_H   0x41
+#define MPU_RA_GYRO_XOUT_H  0x43
+#define MPU_RA_PWR_MGMT_1   0x6B
+#define MPU_RA_WHO_AM_I     0x75
+#define BITS_FS_500DPS      0x08
+#define BITS_FS_1000DPS     0x10
+#define BITS_FS_2000DPS     0x18
+#define BITS_FS_2G          0x00
+#define BITS_FS_4G          0x08
+#define BITS_FS_8G          0x10
+#define BITS_FS_16G         0x18
 
 static void mpu6050AccInit(void);
 static void mpu6050AccRead(int16_t *accData);
@@ -32,8 +39,8 @@ bool mpu6050Detect(sensor_t * acc, sensor_t * gyro)
     if (!ack) return false;
 
     // So like, MPU6xxx has a "WHO_AM_I" register, that is used to verify the identity of the device.
-    // The contents of WHO_AM_I are the upper 6 bits of the MPU-60X0’s 7-bit I2C address.
-    // The least significant bit of the MPU-60X0’s I2C address is determined by the value of the AD0 pin. (we know that already).
+    // The contents of WHO_AM_I are the upper 6 bits of the MPU-60X0â€™s 7-bit I2C address.
+    // The least significant bit of the MPU-60X0â€™s I2C address is determined by the value of the AD0 pin. (we know that already).
     // But here's the best part: The value of the AD0 pin is not reflected in this register.
     if (sig != (MPU6050_ADDRESS & 0x7e)) return false;
     acc->init         = mpu6050AccInit;
@@ -100,9 +107,8 @@ static void mpu6050GyroInit(void)
         break;
     }
     i2cWrite(MPU6050_ADDRESS, MPU_RA_CONFIG, DLPFCFG);       // CONFIG        -- EXT_SYNC_SET 0 (disable input pin for data sync) ; default DLPF_CFG = 0 => ACC bandwidth = 260Hz  GYRO bandwidth = 256Hz)
-    i2cWrite(MPU6050_ADDRESS, MPU_RA_GYRO_CONFIG, 0x18);     // GYRO_CONFIG   -- FS_SEL = 3: Full scale set to 2000 deg/sec
-    i2cWrite(MPU6050_ADDRESS, MPU_RA_ACCEL_CONFIG, 2 << 3);  // Accel scale 8g (4096 LSB/g)
-//    i2cWrite(MPU6050_ADDRESS, MPU_RA_ACCEL_CONFIG, 1 << 3);  // Accel scale 4g (8192 LSB/g)
+    i2cWrite(MPU6050_ADDRESS, MPU_RA_GYRO_CONFIG, BITS_FS_2000DPS);
+    i2cWrite(MPU6050_ADDRESS, MPU_RA_ACCEL_CONFIG, BITS_FS_8G);
 }
 
 static void mpu6050AccRead(int16_t *accData)
