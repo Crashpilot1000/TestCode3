@@ -167,6 +167,7 @@ const clivalue_t valueTable[] =
     { "esc_min",                   VAR_UINT16, &cfg.esc_min,                     0,       2000, 0 },
     { "esc_max",                   VAR_UINT16, &cfg.esc_max,                     0,       2000, 0 },
     { "esc_nfly",                  VAR_UINT16, &cfg.esc_nfly,                    0,       2000, 1 },
+    { "esc_nwmx",                  VAR_UINT8,  &cfg.esc_nwmx,                    0,          1, 1 },
     { "esc_moff",                  VAR_UINT16, &cfg.esc_moff,                    0,       2000, 0 },
     { "esc_pwm",                   VAR_UINT16, &cfg.esc_pwm,                    50,        498, 0 },
     { "srv_pwm",                   VAR_UINT16, &cfg.srv_pwm,                    50,        498, 0 },
