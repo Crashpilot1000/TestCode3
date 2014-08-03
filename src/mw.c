@@ -21,7 +21,8 @@ uint8_t  rcOptions[CHECKBOXITEMS];
 float    axisPID[3];
 float    AvgCyclTime = 1;
 static   float dynP8[3], dynD8[3];
-static   float errorGyroI[3] = { 0, 0, 0 }, errorAngleI[2] = { 0, 0 };
+static   float errorGyroI[2] = { 0, 0 }, errorAngleI[2] = { 0, 0 };
+static   int32_t errorGyroI_YW = 0;
 
 // **********************
 // IMU & SENSORS
@@ -66,8 +67,8 @@ int32_t  GPS_directionToHome;                                        // directio
 uint16_t GPS_speed;                                                  // speed in cm/s
 volatile uint16_t GPS_altitude;                                      // altitude in m
 uint8_t  GPS_update = 0;                                             // it's a binary toogle to distinct a GPS position update
-float    GPS_angle[2] = { 0, 0 };                                    // it's the angles that must be applied for GPS correction
-float    Last_GPS_angle[2] = { 0, 0 };
+float    GPS_angle[2] = {0, 0};                                      // it's the angles that must be applied for GPS correction
+float    Last_GPS_angle[2] = {0, 0};
 uint16_t GPS_ground_course = 0;                                      // DEG * 10
 float    nav[2];                                                     // DEG * 100
 int16_t  maxbank10  = 1;                                             // Maximum GPS Tiltangle in degree * 10 // preset to 1 for safety to prevent div 0
@@ -173,17 +174,18 @@ void loop(void)
 {
     static uint32_t RTLGeneralTimer, AltRCTimer0 = 0, BaroAutoTimer, loopTime;
     float           delta, RCfactor, rcCommandAxis;
-    float           PTerm = 0, ITerm = 0, DTerm = 0, PTermACC = 0, ITermACC = 0, ITermGYRO = 0, error = 0, prop;
-    static float    lastGyro[3] = { 0, 0, 0 }, lastDTerm[3] = { 0, 0, 0 }, FLOATcycleTime = 0;
+    float           PTerm = 0, ITerm = 0, DTerm = 0, PTermACC = 0, ITermACC = 0, ITermGYRO = 0, error = 0, prop = 0;
+    static float    lastGyro[2] = {0, 0}, lastDTerm[2] = {0, 0}, FLOATcycleTime = 0;
     static uint8_t  ThrFstTimeCenter = 0, AutolandState = 0, AutostartState = 0, HoverThrcnt, RTLstate;
     static int8_t   Althightchange;
     static uint16_t HoverThrottle;
     static int16_t  BaroLandThrlimiter, SnrLandThrlimiter, initialThrottleHold, LastAltThrottle = 0;
-    static int16_t  DistanceToHomeMetersOnRTLstart;
+    static int32_t  DistanceToHomeMetersOnRTLstart;
     static int16_t  AutostartTargetHight, AutostartFilterAlt, AutostartFilterVario, AutostartClimbrate;
     static stdev_t  variovariance;
     float           tmp0flt;
-    int16_t         tmp0, thrdiff;
+    int32_t         tmp0, PTermYW;
+    int16_t         thrdiff;
     uint8_t         axis;
 
     if (DoGetRc50HzTimer())
@@ -257,8 +259,8 @@ void loop(void)
             case 6:                                                         // OMG Do the f** RTL now
                 rcOptions[BOXGPSHOLD] = 0;                                  // GPS hold OFF
                 rcOptions[BOXGPSHOME] = 1;                                  // RTL
-                tmp0 = (int16_t)GPS_distanceToHome - DistanceToHomeMetersOnRTLstart; // tmp0 contains flyawayvalue
-                if ((cfg.gps_rtl_flyaway && tmp0 > (int16_t)cfg.gps_rtl_flyaway) ||
+                tmp0 = (int32_t)GPS_distanceToHome - DistanceToHomeMetersOnRTLstart; // tmp0 contains flyawayvalue
+                if ((cfg.gps_rtl_flyaway && tmp0 > (int32_t)cfg.gps_rtl_flyaway) ||
                         (wp_status == WP_STATUS_DONE && ph_status == PH_STATUS_DONE)) RTLstate++;
                 break;
             case 7:                                                         // Do Autoland
@@ -524,8 +526,8 @@ void loop(void)
                 }
                 break;
             case 3:                                                             // Now climb with desired rate to targethight.
-                tmp0 = (int16_t)((float)AutostartFilterAlt + (float)AutostartFilterVario * cfg.bar_lag);// Actual predicted hight
-                AutostartClimbrate = constrain((abs(AutostartTargetHight - tmp0) / 3), 10, (int16_t)cfg.as_clmbr);// Slow down when getting closer to target
+                tmp0 = (int32_t)((float)AutostartFilterAlt + (float)AutostartFilterVario * cfg.bar_lag);// Actual predicted hight
+                AutostartClimbrate = constrain((abs(AutostartTargetHight - tmp0) / 3), 10, (int32_t)cfg.as_clmbr);// Slow down when getting closer to target
                 if (AutostartFilterAlt < AutostartTargetHight)
                 {
                     GetClimbrateTorcDataTHROTTLE(AutostartClimbrate);           // Climb
@@ -569,7 +571,7 @@ void loop(void)
             case 3:                                                             // Start descent initialize Variables
                 if (cfg.al_debounce)                                            // Set BaroLandThrlimiter now, if wanted
                 {
-                    tmp0 = (int16_t)HoverThrottle - cfg.esc_min;                // tmp0 contains absolute absolute hoverthrottle
+                    tmp0 = (int32_t)HoverThrottle - (int32_t)cfg.esc_min;				// tmp0 contains absolute absolute hoverthrottle
                     if (tmp0 > 0) BaroLandThrlimiter = HoverThrottle + ((float)tmp0 * (float)cfg.al_debounce * 0.01f);// Check here to be on the safer side. Don't set BaroLandThrlimiter if something is wrong
                 }
                 GetClimbrateTorcDataTHROTTLE(-(int16_t)cfg.al_barolr);
@@ -662,7 +664,7 @@ void loop(void)
 // Baro STATS LOGGING
         if (sensors(SENSOR_BARO) && f.ARMED)
         {
-            tmp0 = (int16_t)((int32_t)EstAlt / 100);
+            tmp0 = (int32_t)EstAlt / 100;
             if (tmp0 > cfg.MaxAltMeter) cfg.MaxAltMeter = tmp0;
             if (tmp0 < cfg.MinAltMeter) cfg.MinAltMeter = tmp0;
         }
@@ -719,97 +721,93 @@ void loop(void)
         else GPS_angle[0] = GPS_angle[1] = 0;                                   // Zero GPS influence on the ground
         BlockGPSAngles = false;
 
-        RCfactor = ACCDeltaTimeINS / (MainDptCut + ACCDeltaTimeINS);            // used for pt1 element
-        prop     = (float)min(max(abs(rcCommand[PITCH]), abs(rcCommand[ROLL])), 500);
-        for (axis = 0; axis < 3; axis++)
+        RCfactor  = ACCDeltaTimeINS / (MainDptCut + ACCDeltaTimeINS);          // used for pt1 element
+
+        tmp0  = ((int32_t)rcCommand[YAW] * (((int32_t)cfg.yawRate << 1) + 40)) >> 5;
+        error = (float)tmp0 - gyroData[YAW] * 0.25f;
+        if (abs(tmp0) > 50) errorGyroI_YW = 0;
+        else errorGyroI_YW = constrain(errorGyroI_YW + (int32_t)(error * (float)cfg.I8[YAW] * (ACCDeltaTimeINS * 333.333f)), -268435454, 268435454);
+        axisPID[YAW] = constrain(errorGyroI_YW >> 13, -250, 250);
+        PTermYW      = ((int32_t)error * (int32_t)cfg.P8[YAW]) >> 6;
+        if(NumberOfMotors > 3)                                                  // Constrain YAW by D value if not servo driven in that case servolimits apply
         {
-            if (axis == YAW)                                                    // We use mwii 2.3 YAW for both pid controllers
+            tmp0 = 300;
+            if(cfg.D8[YAW]) tmp0 -= (int32_t)cfg.D8[YAW];
+            PTermYW = constrain(PTermYW, -tmp0, tmp0);
+        }
+        axisPID[YAW] += PTermYW;
+
+        if(f.HORIZON_MODE) prop = (float)min(max(abs(rcCommand[PITCH]), abs(rcCommand[ROLL])), 450) / 450.0f;
+
+        for (axis = 0; axis < 2; axis++)
+        {
+            rcCommandAxis = (float)rcCommand[axis];                             // Calculate common values for pid controllers
+            if ((f.ANGLE_MODE || f.HORIZON_MODE)) error = constrain(2.0f * rcCommandAxis + GPS_angle[axis], -500.0f, +500.0f) - angle[axis] + cfg.angleTrim[axis];
+            switch (cfg.mainpidctrl)
             {
-                tmp0  = (int16_t)(((int32_t)rcCommand[axis] * (2 * (int32_t)cfg.yawRate + 40)) >> 3);
-                error = (float)tmp0 - gyroData[axis];
-                if (abs(tmp0) > 200) errorGyroI[axis] = 0.0f;
-                else errorGyroI[axis] = constrain(errorGyroI[axis] + error * (float)cfg.I8[axis] * ACCDeltaTimeINS * 0.01f, -32205.0f, 32205.0f);
-                ITerm = constrain(errorGyroI[axis], -250.0f, 250.0f);
-                PTerm = (error * (float)cfg.P8[axis]) * 0.004f;
-                if(NumberOfMotors > 3)                                          // Constrain YAW by D value if not servo driven in that case servolimits apply
+            case 0:
+                if (f.ANGLE_MODE || f.HORIZON_MODE)
                 {
-                    tmp0flt = 300.0f;
-                    if(cfg.D8[axis]) tmp0flt -= (float)cfg.D8[axis];
-                    PTerm   = constrain(PTerm, -tmp0flt, +tmp0flt);
+                    PTermACC          = error * (float)cfg.P8[PIDLEVEL] * 0.008f;
+                    tmp0flt           = (float)cfg.D8[PIDLEVEL] * 5.0f;
+                    PTermACC          = constrain(PTermACC, -tmp0flt, +tmp0flt);
+                    errorAngleI[axis] = constrain(errorAngleI[axis] + error * ACCDeltaTimeINS, -30.0f, +30.0f);
+                    ITermACC          = errorAngleI[axis] * (float)cfg.I8[PIDLEVEL] * 0.08f;
                 }
-                DTerm = 0.0f;
-            }
-            else
-            {
-                rcCommandAxis = (float)rcCommand[axis];                         // Calculate common values for pid controllers
-                if ((f.ANGLE_MODE || f.HORIZON_MODE)) error = constrain(2.0f * rcCommandAxis + GPS_angle[axis], -500.0f, +500.0f) - angle[axis] + cfg.angleTrim[axis];
-                switch (cfg.mainpidctrl)
+                if (!f.ANGLE_MODE)
                 {
-                case 0:
-                    if (f.ANGLE_MODE || f.HORIZON_MODE)
+                    if (abs((int16_t)gyroData[axis]) > 2560) errorGyroI[axis] = 0.0f;
+                    else
                     {
-                        PTermACC          = error * (float)cfg.P8[PIDLEVEL] * 0.008f;
-                        tmp0flt           = (float)cfg.D8[PIDLEVEL] * 5.0f;
-                        PTermACC          = constrain(PTermACC, -tmp0flt, +tmp0flt);
-                        errorAngleI[axis] = constrain(errorAngleI[axis] + error * ACCDeltaTimeINS, -30.0f, +30.0f);
-                        ITermACC          = errorAngleI[axis] * (float)cfg.I8[PIDLEVEL] * 0.08f;
+                        error            = (rcCommandAxis * 320.0f / (float)cfg.P8[axis]) - gyroData[axis];
+                        errorGyroI[axis] = constrain(errorGyroI[axis] + error * ACCDeltaTimeINS, -192.0f, +192.0f);
                     }
-                    if (!f.ANGLE_MODE)
+                    ITermGYRO = errorGyroI[axis] * (float)cfg.I8[axis] * 0.01f;
+                    if (f.HORIZON_MODE)
                     {
-                        if (abs((int16_t)gyroData[axis]) > 2560) errorGyroI[axis] = 0.0f;
-                        else
-                        {
-                            error            = (rcCommandAxis * 320.0f / (float)cfg.P8[axis]) - gyroData[axis];
-                            errorGyroI[axis] = constrain(errorGyroI[axis] + error * ACCDeltaTimeINS, -192.0f, +192.0f);
-                        }
-                        ITermGYRO = errorGyroI[axis] * (float)cfg.I8[axis] * 0.01f;
-                        if (f.HORIZON_MODE)
-                        {
-                            tmp0flt = 500.0f - prop;
-                            PTerm   = (PTermACC * tmp0flt + rcCommandAxis * prop) * 0.002;
-                            ITerm   = (ITermACC * tmp0flt + ITermGYRO     * prop) * 0.002;
-                        }
-                        else
-                        {
-                            PTerm = rcCommandAxis;
-                            ITerm = ITermGYRO;
-                        }
+                        PTerm = PTermACC + prop * (rcCommandAxis - PTermACC);
+                        ITerm = ITermACC + prop * (ITermGYRO     - ITermACC);
                     }
                     else
                     {
-                        PTerm = PTermACC;
-                        ITerm = ITermACC;
+                        PTerm = rcCommandAxis;
+                        ITerm = ITermGYRO;
                     }
-                    PTerm           -= gyroData[axis] * dynP8[axis] * 0.003f;
-                    delta            = (gyroData[axis] - lastGyro[axis]) / ACCDeltaTimeINS;
-                    lastGyro[axis]   = gyroData[axis];
-                    lastDTerm[axis] += RCfactor * (delta - lastDTerm[axis]);
-                    DTerm            = lastDTerm[axis] * dynD8[axis] * 0.00007f;
-                    break;
+                }
+                else
+                {
+                    PTerm = PTermACC;
+                    ITerm = ITermACC;
+                }
+                PTerm           -= gyroData[axis] * dynP8[axis] * 0.003f;
+                delta            = (gyroData[axis] - lastGyro[axis]) / ACCDeltaTimeINS;
+                lastGyro[axis]   = gyroData[axis];
+                lastDTerm[axis] += RCfactor * (delta - lastDTerm[axis]);
+                DTerm            = lastDTerm[axis] * dynD8[axis] * 0.00007f;
+                break;
 // Alternative Controller by alex.khoroshko http://www.multiwii.com/forum/viewtopic.php?f=8&t=3671&start=30#p37465
 // But a little modified...
-                case 1:                                                         // 1 = New mwii controller (float pimped + pt1element)
-                    if (!f.ANGLE_MODE)                                          // control is GYRO based (ACRO and HORIZON - direct sticks control is applied to rate PID
-                    {
-                        tmp0flt = (float)(((int32_t)(cfg.rollPitchRate + 27) * (int32_t)rcCommand[axis]) >> 2);
-                        if (f.HORIZON_MODE) tmp0flt += ((float)cfg.I8[PIDLEVEL] * error) * 0.16f;
-                    }
-                    else tmp0flt      = (float)cfg.P8[PIDLEVEL] * error * 0.09f;
-                    tmp0flt          -= gyroData[axis];
-                    PTerm             = (float)cfg.P8[axis] * tmp0flt * 0.002f;
-                    errorGyroI[axis] += (float)cfg.I8[axis] * tmp0flt * ACCDeltaTimeINS;
-                    errorGyroI[axis]  = constrain(errorGyroI[axis], -5500.0f, 5500.0f);// errorGyroI[axis]  = constrain(errorGyroI[axis], -17176.0f, 17176.0f);
-                    ITerm             = errorGyroI[axis] * 0.015f;
-                    delta             = (tmp0flt - lastGyro[axis]) / ACCDeltaTimeINS;
-                    lastGyro[axis]    = tmp0flt;
-                    lastDTerm[axis]  += RCfactor * (delta - lastDTerm[axis]);
-                    DTerm             = -((float)cfg.D8[axis] * lastDTerm[axis] * 0.00001f);// D scaled up by 2
-                    break;
-                }                                                               // End of Switch
-            }
+            case 1:                                                             // 1 = New mwii controller (float pimped + pt1element)
+                if (!f.ANGLE_MODE)                                              // control is GYRO based (ACRO and HORIZON - direct sticks control is applied to rate PID
+                {
+                    tmp0flt = (float)(((int32_t)(cfg.rollPitchRate + 27) * (int32_t)rcCommand[axis]) >> 2);
+                    if (f.HORIZON_MODE) tmp0flt += ((float)cfg.I8[PIDLEVEL] * error) * 0.16f;
+                }
+                else tmp0flt      = (float)cfg.P8[PIDLEVEL] * error * 0.09f;
+                tmp0flt          -= gyroData[axis];
+                PTerm             = (float)cfg.P8[axis] * tmp0flt * 0.002f;
+                errorGyroI[axis] += (float)cfg.I8[axis] * tmp0flt * ACCDeltaTimeINS;
+                errorGyroI[axis]  = constrain(errorGyroI[axis], -5500.0f, 5500.0f);// errorGyroI[axis]  = constrain(errorGyroI[axis], -17176.0f, 17176.0f);
+                ITerm             = errorGyroI[axis] * 0.015f;
+                delta             = (tmp0flt - lastGyro[axis]) / ACCDeltaTimeINS;
+                lastGyro[axis]    = tmp0flt;
+                lastDTerm[axis]  += RCfactor * (delta - lastDTerm[axis]);
+                DTerm             = -((float)cfg.D8[axis] * lastDTerm[axis] * 0.00001f);// D scaled up by 2
+                break;
+            }                                                                   // End of Switch
             axisPID[axis] = (float)((int32_t)(PTerm + ITerm - DTerm + 0.5f));   // Round up result.
         }
-
+        
         if (f.ARMED)
         {
             if (rcCommand[THROTTLE] > ESCnoFlyThrottle) CopterFlying = true;
@@ -974,7 +972,7 @@ static void DoRcArmingAndBasicStuff(void)
         {
             errorGyroI[0]  = 0;
             errorGyroI[1]  = 0;
-            errorGyroI[2]  = 0;
+            errorGyroI_YW  = 0;
             errorAngleI[0] = 0;
             errorAngleI[1] = 0;
         }
