@@ -218,6 +218,7 @@ static void resetConf(void)
     cfg.esc_nfly                  = 1300;       // This is the absolute throttle that kicks off the "has landed timer" if it is too low cfg.rc_minchk + 5% is taken. Also baselinethr for Autostart, also plausibility check for initial Failsafethrottle
 //  cfg.esc_nfly                  = 0;          // This is the absolute throttle that kicks off the "has landed timer" if it is too low cfg.rc_minchk + 5% is taken.
     cfg.esc_pwm                   = 400;
+    cfg.esc_nwmx                  = 1;          // NewMix: 0 = mwii style, 1 = scaled handling of maxthrottlesituations
     cfg.srv_pwm                   = 50;
     cfg.pass_mot                  = 0;          // Crashpilot: Only used with feature pass. If 0 = all Motors, otherwise specific Motor
 
