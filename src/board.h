@@ -29,6 +29,8 @@
 #define RADtoDEG10  572.9577951308f                         // #define RADtoDEG10  1800.0f  / M_PI
 #define RADtoDEG100 5729.577951308f                         // #define RADtoDEG100 18000.0f / M_PI
 
+#define RCconstPI   0.159154943092f                         // 0.5f / M_PI;
+
 #define min(a, b) ((a) < (b) ? (a) : (b))
 #define max(a, b) ((a) > (b) ? (a) : (b))
 #define abs(x) ((x) > 0 ? (x) : -(x))
