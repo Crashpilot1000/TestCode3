@@ -331,6 +331,7 @@ typedef struct config_t
     uint16_t esc_max;                       // This is the maximum value for the ESCs at full power this value can be increased up to 2000
     uint16_t esc_moff;                      // This is the value for the ESCs when they are not armed. In some cases, this value must be lowered down to 900 for some specific ESCs
     uint16_t esc_nfly;                      // This is the absolute throttle that kicks off the "has landed timer" if it is too low cfg.rc_minchk is taken.
+    uint8_t  esc_nwmx;                      // 0 = mwii style, 1 = scaled handling of maxthrottlesituations
     uint16_t esc_pwm;                       // The update rate of motor outputs (50-498Hz)
     uint16_t srv_pwm;                       // The update rate of servo outputs (50-498Hz)
     uint8_t  pass_mot;                      // Crashpilot: Only used with feature pass. If 0 = all Motors, otherwise specific Motor
