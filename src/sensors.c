@@ -223,7 +223,7 @@ static void GYRO_Common(void)
     for (i = 0; i < 3; i++)
     {
         gyroADC[i]  = gyroADC[i] - gyroZero[i];
-        tmp         = (int16_t)(gyroADC[i] * 0.3125f + 0.5f);
+        tmp         = (int16_t)(gyroADC[i] * 0.3125f);
         gyroData[i] = (float)tmp * 3.2f;
         gyroADC[i] *= GyroScale16;                                // gyroADC delivered in 16 * rad/s
     }
