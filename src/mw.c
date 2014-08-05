@@ -176,12 +176,13 @@ void loop(void)
     float           delta, RCfactor, rcCommandAxis;
     float           PTerm = 0, ITerm = 0, DTerm = 0, PTermACC = 0, ITermACC = 0, ITermGYRO = 0, error = 0, prop = 0;
     static float    lastGyro[2] = {0, 0}, lastDTerm[2] = {0, 0}, FLOATcycleTime = 0;
-    static uint8_t  ThrFstTimeCenter = 0, AutolandState = 0, AutostartState = 0, HoverThrcnt, RTLstate;
+    static uint8_t  ThrFstTimeCenter = 0, AutolandState = 0, AutostartState = 0, HoverThrcnt, RTLstate, ReduceBaroI = 0;
     static int8_t   Althightchange;
     static uint16_t HoverThrottle;
     static int16_t  BaroLandThrlimiter, SnrLandThrlimiter, initialThrottleHold, LastAltThrottle = 0;
     static int32_t  DistanceToHomeMetersOnRTLstart;
-    static int16_t  AutostartTargetHight, AutostartFilterAlt, AutostartFilterVario, AutostartClimbrate;
+    static int16_t  AutostartClimbrate;
+    static int32_t  FilterVario, AutostartTargetHight, AutostartFilterAlt;
     static stdev_t  variovariance;
     float           tmp0flt;
     int32_t         tmp0, PTermYW;
@@ -283,14 +284,15 @@ void loop(void)
         {
             if (rcOptions[BOXBARO] && GroundAltInitialized && f.ARMED)
             {
-                if (!f.BARO_MODE)                                           // Initialize Baromode here if it isn't already
+                if (!f.BARO_MODE)                                               // Initialize Baromode here if it isn't already
                 {
                     Althightchange   = 0;
                     AutolandState    = 0;
                     AutostartState   = 0;
                     ThrFstTimeCenter = 0;
+                    ReduceBaroI      = 0;
                     AltHold          = EstAlt;
-                    if (FSBaroThrottle)                                     // Use Baro failsafethrottle here
+                    if (FSBaroThrottle)                                         // Use Baro failsafethrottle here
                     {
                         LastAltThrottle     = FSBaroThrottle;
                         initialThrottleHold = FSBaroThrottle;
@@ -300,18 +302,19 @@ void loop(void)
                         LastAltThrottle     = rcCommand[THROTTLE];
                         initialThrottleHold = rcCommand[THROTTLE];
                     }
-                    f.BARO_MODE = 1;                                        // Finally set baromode to initialized
+                    f.BARO_MODE = 1;                                            // Finally set baromode to initialized
                 }
 
-                if(CopterFlying)                                            // Are we somehow airborne?
+                if(CopterFlying)                                                // Are we somehow airborne?
                 {
                     if(AutostartState)
                     {
-                        if ((abs(rcData[THROTTLE] - cfg.rc_mid) > cfg.rc_dbah))// Autostartus interruptus
+                        if ((abs(rcData[THROTTLE] - cfg.rc_mid) > cfg.rc_dbah)) // Autostartus interruptus
                         {
                             AutostartState      = 0;
                             ThrFstTimeCenter    = 0;
                             Althightchange      = 0;
+                            ReduceBaroI         = 0;
                             AltHold             = EstAlt;
                             initialThrottleHold = LastAltThrottle;
                         }
@@ -319,11 +322,12 @@ void loop(void)
                     else
                     {
                         if (rcData[THROTTLE] < cfg.rc_minchk && !AutolandState) AutolandState = 1; // Start Autoland
-                        if (rcData[THROTTLE] > cfg.rc_minchk && AutolandState)// Autolandus interruptus on Userinput reset some stuff
+                        if (rcData[THROTTLE] > cfg.rc_minchk && AutolandState)  // Autolandus interruptus on Userinput reset some stuff
                         {
                             AutolandState       = 0;
                             ThrFstTimeCenter    = 0;
                             Althightchange      = 0;
+                            ReduceBaroI         = 0;
                             AltHold             = EstAlt;
                             initialThrottleHold = LastAltThrottle;
                         }
@@ -331,7 +335,7 @@ void loop(void)
                 }
                 else
                 {
-                    if (cfg.as_trgt && !AutostartState && ThrFstTimeCenter) AutostartState = 1; // Start Autostart
+                    if (cfg.as_trgt && !AutostartState && ThrFstTimeCenter == 3) AutostartState = 1; // Start Autostart
                 }
             }
             else
@@ -340,6 +344,7 @@ void loop(void)
                 AutolandState   = 0;
                 AutostartState  = 0;
                 LastAltThrottle = 0;
+                ReduceBaroI     = 0;
             }
             if (AutolandState || AutostartState)                                // Switch to Angle mode when AutoBarofunctions anyway
             {
@@ -488,46 +493,55 @@ void loop(void)
         {
             getAltitudePID();                                                   // !Do not forget to calculate the Baropids...
 
-            if(AutostartState)
+            if(AutostartState > 1)
             {
-                AutostartFilterAlt   = ((AutostartFilterAlt   << 1) + AutostartFilterAlt   + (int16_t)EstAlt) >> 2;
-                AutostartFilterVario = ((AutostartFilterVario << 1) + AutostartFilterVario + (int16_t)vario)  >> 2;
-                devPush(&variovariance, (float)AutostartFilterVario);
+                AutostartFilterAlt = ((AutostartFilterAlt << 1) + AutostartFilterAlt + (int32_t)EstAlt) >> 2;
+                FilterVario        = ((FilterVario << 1)        + FilterVario        + (int32_t)vario) >> 2;
             }
             switch(AutostartState)
             {
             case 0:
                 break;
             case 1:                                                             // Initialize Autostart with relative targethight
-                AutostartTargetHight = (int16_t)EstAlt + (int16_t)cfg.as_trgt * 100;
-                AutostartFilterAlt   = (int16_t)EstAlt;
-                AutostartFilterVario = (int16_t)vario;
+                AutostartTargetHight = (int32_t)EstAlt + (int32_t)cfg.as_trgt * 100;
+                AutostartFilterAlt   = (int32_t)EstAlt;
+                FilterVario          = 0;                                       // We are standing
                 AutostartClimbrate   = (int16_t)cfg.as_lnchr << 1;
                 initialThrottleHold  = ESCnoFlyThrottle;                        // Set higher baselinethrottle than esc min.
-                devClear(&variovariance);
-                devPush(&variovariance, vario);
-                GetClimbrateTorcDataTHROTTLE(AutostartClimbrate);
-                BlockGPSAngles = true;                                          // Block GPS on the Ground
+                BlockGPSAngles       = true;                                    // Block GPS on the Ground
+                BaroAutoTimer        = currentTimeMS + 800;                     // prepare timer to settle data
                 AutostartState++;
                 break;
-            case 2:                                                             // Wait for liftoff. It is assumed when the std dev of the vario exceeds a limit or if the climbrate is beyond 50cm/s
-                if (AutostartFilterVario < 50 || ((uint8_t)devStandardDeviation(&variovariance) < cfg.as_stdev))
+            case 2:                                                             // Let things settle
+                if (currentTimeMS > BaroAutoTimer)
+                {
+                    devClear(&variovariance);
+                    GetClimbrateTorcDataTHROTTLE(AutostartClimbrate);           // Ignition...
+                    AutostartState++;
+                }
+                BlockGPSAngles = true;                                          // Block GPS on the Ground
+                break;
+            case 3:                                                             // Wait for liftoff. It is assumed when the std dev of the vario exceeds a limit or if the climbrate is beyond 50cm/s
+                devPush(&variovariance, (float)FilterVario);
+                if (FilterVario > 50 ||
+                   ((uint8_t)devStandardDeviation(&variovariance) > cfg.as_stdev) ||
+                   (AutostartFilterAlt > AutostartTargetHight + 50))
+                {
+                    CopterFlying       = true;                                  // Liftoff! Force alhold to reset virtual targethight
+                    rcData[THROTTLE]   = cfg.rc_mid;                            // We have a liftoff, force althold (reset internal altholdtarget)
+                    ThrFstTimeCenter   = 0;                                     // Force ini
+                    AutostartClimbrate = (int16_t)cfg.as_clmbr;
+                    AutostartState++;
+                }
+                else 
                 {
                     GetClimbrateTorcDataTHROTTLE(AutostartClimbrate);           // No, liftoff increase virtual targethight (like a rubberband to pull the copter off the ground)
                     BlockGPSAngles = true;                                      // Block GPS on the Ground
                 }
-                else                                                            // Liftoff! Force alhold to reset virtual targethight
-                {
-                    CopterFlying       = true;                                  // Set Copter airborne status if not already
-                    rcData[THROTTLE]   = cfg.rc_mid;                            // We have a liftoff, force althold (reset internal altholdtarget)
-                    ThrFstTimeCenter   = 0;                                     // Forc ini
-                    AutostartClimbrate = (int16_t)cfg.as_clmbr;
-                    AutostartState++;
-                }
                 break;
-            case 3:                                                             // Now climb with desired rate to targethight.
-                tmp0 = (int32_t)((float)AutostartFilterAlt + (float)AutostartFilterVario * cfg.bar_lag);// Actual predicted hight
-                AutostartClimbrate = constrain((abs(AutostartTargetHight - tmp0) / 3), 10, (int32_t)cfg.as_clmbr);// Slow down when getting closer to target
+            case 4:                                                             // Now climb with desired rate to targethight.
+                tmp0 = (int32_t)((float)AutostartFilterAlt + (float)FilterVario * cfg.bar_lag);// Actual predicted hight
+                AutostartClimbrate = constrain((abs(AutostartTargetHight - tmp0) / 3), 10, (int16_t)cfg.as_clmbr);// Slow down when getting closer to target
                 if (AutostartFilterAlt < AutostartTargetHight)
                 {
                     GetClimbrateTorcDataTHROTTLE(AutostartClimbrate);           // Climb
@@ -544,34 +558,31 @@ void loop(void)
             switch (AutolandState)
             {
             case 0:                                                             // No Autoland Do nothing
-                SnrLandThrlimiter    = BaroLandThrlimiter = 0;                  // Reset it here! BaroAutoTimer = 0;
+                SnrLandThrlimiter = BaroLandThrlimiter = 0;                     // Reset it here! BaroAutoTimer = 0;
                 break;
-
             case 1:                                                             // Start Althold
-                rcData[THROTTLE]     = cfg.rc_mid;                              // Put throttlestick to middle
-                BaroAutoTimer        = currentTimeMS + HoverTimeBeforeLand;     // prepare timer
-                HoverThrcnt          = 1;                                       // Initialize Hoverthrottlestuff here
-                HoverThrottle        = DoMotorStats(true);                      // Try to get average here from flight. Returns 0 if not possible.
+                rcData[THROTTLE] = cfg.rc_mid;                                  // Put throttlestick to middle
+                BaroAutoTimer    = currentTimeMS + HoverTimeBeforeLand;         // prepare timer
+                HoverThrcnt      = 1;                                           // Initialize Hoverthrottlestuff here
+                HoverThrottle    = DoMotorStats(true);                          // Try to get average here from flight. Returns 0 if not possible.
                 if (HoverThrottle < LastAltThrottle) HoverThrottle = LastAltThrottle; // Take the bigger one as base
                 AutolandState++;
                 break;
-
             case 2:                                                             // We hover here and gather the Hoverthrottle
-                rcData[THROTTLE]     = cfg.rc_mid;                              // Put throttlestick to middle: Hover some time to gather Hoverthr
-                HoverThrottle       += LastAltThrottle;
-                HoverThrcnt ++;
+                rcData[THROTTLE] = cfg.rc_mid;                                  // Put throttlestick to middle: Hover some time to gather Hoverthr
+                HoverThrottle   += LastAltThrottle;
+                HoverThrcnt++;
                 if (HoverThrcnt == 20)
                 {
-                    HoverThrottle    = HoverThrottle / 20;                      // Average of 20 Values
+                    HoverThrottle = HoverThrottle / 20;                         // Average of 20 Values
                     if (currentTimeMS > BaroAutoTimer) AutolandState++;
                     else HoverThrcnt = 1;
                 }
                 break;
-
             case 3:                                                             // Start descent initialize Variables
                 if (cfg.al_debounce)                                            // Set BaroLandThrlimiter now, if wanted
                 {
-                    tmp0 = (int32_t)HoverThrottle - (int32_t)cfg.esc_min;				// tmp0 contains absolute absolute hoverthrottle
+                    tmp0 = (int32_t)HoverThrottle - (int32_t)cfg.esc_min;       // tmp0 contains absolute absolute hoverthrottle
                     if (tmp0 > 0) BaroLandThrlimiter = HoverThrottle + ((float)tmp0 * (float)cfg.al_debounce * 0.01f);// Check here to be on the safer side. Don't set BaroLandThrlimiter if something is wrong
                 }
                 GetClimbrateTorcDataTHROTTLE(-(int16_t)cfg.al_barolr);
@@ -579,7 +590,6 @@ void loop(void)
                 BaroAutoTimer = 0;
                 AutolandState++;
                 break;
-
             case 4:                                                             // Keep descending and check for landing
                 GetClimbrateTorcDataTHROTTLE(-(int16_t)cfg.al_barolr);
                 if (sensors(SENSOR_SONAR))                                      // Adjust Landing
@@ -597,7 +607,6 @@ void loop(void)
                 if (LastAltThrottle > ESCnoFlyThrottle) BaroAutoTimer = 0;      // Reset Timer
                 if ((BaroAutoTimer && currentTimeMS > BaroAutoTimer) || UpsideDown) AutolandState++; // Proceed to disarm if timeup or copter upside down
                 break;
-
             case 5:                                                             // Shut down Copter forever....
                 DisArmCopter();
                 break;
@@ -605,59 +614,97 @@ void loop(void)
 
             thrdiff = rcData[THROTTLE] - cfg.rc_mid;
             tmp0    = abs(thrdiff);
-
-            if (tmp0 < cfg.rc_dbah && !ThrFstTimeCenter)
-            {
-                AltRCTimer0 = 0;                                                // Force first Run
-                ThrFstTimeCenter = 1;
+            
+            if (!ThrFstTimeCenter)                                              // Initialize "have passed center" check
+            {                                                                   // Note: thrdiff = 0 is checked below
+                if (thrdiff > 0) ThrFstTimeCenter = 1;                          // Initial Throttlestick above middle
+                if (thrdiff < 0) ThrFstTimeCenter = 2;                          // Initial Throttlestick below middle
             }
-            if (currentTimeMS >= AltRCTimer0)                                                                         // X Hz Loop
+  
+            if (ThrFstTimeCenter != 3)
+            {
+                if (tmp0 <= cfg.rc_dbah) ThrFstTimeCenter = 3;                  // We are inside Deadband
+                else                                                            // We are outside Deadband, check if me missed a "passing middle" situation
+                {
+                    if (ThrFstTimeCenter == 1 && thrdiff < 0)
+                    {
+                        ThrFstTimeCenter = 3;
+                    }
+                    else
+                    {
+                        if (ThrFstTimeCenter == 2 && thrdiff > 0) ThrFstTimeCenter = 3;
+                    }
+                }
+                if (ThrFstTimeCenter == 3)
+                {
+                    AltRCTimer0 = 0;                                            // Force first Run
+                    ReduceBaroI = 0;
+                }
+            }
+
+            if (currentTimeMS >= AltRCTimer0)                                   // X Hz Loop
             {
                 AltRCTimer0 = currentTimeMS + 100;
-                if (ThrFstTimeCenter && tmp0 > cfg.rc_dbah)
+                if (ThrFstTimeCenter == 3)
                 {
-                    initialThrottleHold = initialThrottleHold + (BaroP / 100);							                          // Adjust Baselinethr by 1% of BaroP
-                    if (LastAltThrottle < cfg.esc_max && thrdiff > 0)
+                    if (tmp0 > cfg.rc_dbah)
                     {
-                        Althightchange = 1;
-                        AltHold += (float)(thrdiff - cfg.rc_dbah) * 0.125f;
+                        initialThrottleHold += BaroP / 100;                     // Adjust Baselinethr by 1% of BaroP
+                        if(thrdiff > 0)                                         // Note: thrdiff can not be zero here
+                        {
+                            ReduceBaroI    = 1;
+                            Althightchange = 1;
+                            if(LastAltThrottle < cfg.esc_max) AltHold += (float)(thrdiff - cfg.rc_dbah) * 0.125f;
+                        }
+                        else
+                        {
+                            ReduceBaroI    =  0;
+                            Althightchange = -1;
+                            if (LastAltThrottle > cfg.esc_min)
+                            {
+                                tmp0flt = (float)(thrdiff + cfg.rc_dbah) * 0.125f;
+                                if (!AutolandState) AltHold += tmp0flt * cfg.bar_dscl;// Descent with less rate in manual mode
+                                else AltHold += tmp0flt;
+                            }
+                        }
                     }
-                    if (LastAltThrottle > cfg.esc_min && thrdiff < 0)
+                    else                                                        // Stick is to center here
                     {
-                        Althightchange = -1;
-                        if (!AutolandState) AltHold += (float)(thrdiff + cfg.rc_dbah) * 0.125f * cfg.bar_dscl;        // Descent with less rate in manual mode
-                        else AltHold += (float)(thrdiff + cfg.rc_dbah) * 0.125f;
+                        tmp0flt = vario * cfg.bar_lag;
+                        if (Althightchange)                                     // Are we coming from a hight change? Project stoppingpoint.
+                        {
+                            if(Althightchange > 0)
+                            {
+                                if (vario < 0.0f) tmp0flt = 0.0f;
+                            }
+                            else
+                            {
+                                if (vario < -0.5f) tmp0flt *= 0.5f;
+                                else tmp0flt = 0.0f;
+                            }
+                            AltHold = EstAlt + tmp0flt;
+                            initialThrottleHold = LastAltThrottle;              // This is for starting in althold otherwise the initialthr would be idle throttle
+                            ReduceBaroI    = 0;
+                            Althightchange = 0;
+                        }
                     }
                 }
-                else                                                                                                  // Stick is to center here
-                {
-                    if (ThrFstTimeCenter && Althightchange)                                                           // Are we coming from a hight change?
-                    {
-                        AltHold = EstAlt + vario * cfg.bar_lag;                                                       // We are coming from a hightchange project stoppingpoint
-                        initialThrottleHold = LastAltThrottle;                                                        // This is for starting in althold otherwise the initialthr would be idle throttle
-                    }
-                    Althightchange = 0;
-                }
-            }                                                                                                         // End of X Hz Loop
-
-
-            if (AutolandState || AutostartState || ph_status != PH_STATUS_NONE) BaroD = 0;                            // Don't do Throttle angle correction when autolanding/starting or during PH
-            if (AutostartState == 2) BaroI = BaroI >> 1;                                                              // Reduce Variobrake on Autostart during liftoffphase
-            rcCommand[THROTTLE] = constrain(initialThrottleHold + BaroP + BaroD - BaroI, cfg.esc_min, cfg.esc_max);
-
-            if (AutolandState)                                                                                        // We are Autolanding and
+            }                                                                   // End of X Hz Loop
+            if (AutolandState || AutostartState || ph_status != PH_STATUS_NONE) BaroD = 0;// Don't do Throttle angle correction when autolanding/starting or during PH
+            if (ReduceBaroI) BaroI *= 1.0f - constrain(fabs(AltHold - EstAlt) * 0.003f, 0.0f, 0.5f);// Reduce Variobrake
+            tmp0flt = BaroP + BaroD - BaroI;
+            if(tmp0flt < 0.0f) tmp0flt *= 0.9f;                                 // Reduce downpid to 90%
+            rcCommand[THROTTLE] = constrain((int32_t)tmp0flt + initialThrottleHold, cfg.esc_min, cfg.esc_max);
+            if (AutolandState)                                                  // We are Autolanding and
             {
-                if (SnrLandThrlimiter)                                                                                // Check sonarlimiter first
-                {
-                    // Sonar has given proximity alert and sonar land support is wanted
-                    BlockGPSAngles = true;                                                                            // Block GPS on the Ground
-                    if (LastAltThrottle < SnrLandThrlimiter) SnrLandThrlimiter = LastAltThrottle;                     // Adjust limiter here
+                if (SnrLandThrlimiter)                                          // Check sonarlimiter first
+                {                                                               // Sonar has given proximity alert and sonar land support is wanted
+                    BlockGPSAngles = true;                                      // Block GPS on the Ground
+                    if (LastAltThrottle < SnrLandThrlimiter) SnrLandThrlimiter = LastAltThrottle; // Adjust limiter here
                     rcCommand[THROTTLE] = min(rcCommand[THROTTLE], SnrLandThrlimiter);
                 }
                 else if (BaroLandThrlimiter) rcCommand[THROTTLE] = min(rcCommand[THROTTLE], BaroLandThrlimiter);      // Only do Barolimiter on landing, if we have no Sonarlimiter
             }
-
-
             LastAltThrottle = rcCommand[THROTTLE];
         }
 
@@ -669,7 +716,6 @@ void loop(void)
             if (tmp0 < cfg.MinAltMeter) cfg.MinAltMeter = tmp0;
         }
 // Baro STATS LOGGING
-
 #endif
 
 #ifdef MAG
@@ -831,8 +877,8 @@ void loop(void)
         }
 
         tmp0 = rcCommand[THROTTLE];                                             // Save Original THROTTLE
-        if(f.ARMED && cfg.rc_flpsp && sensors(SENSOR_ACC) && UpsideDown && !f.ANGLE_MODE) // Putting flipsupport here
-            rcCommand[THROTTLE] = cfg.esc_min + ((rcCommand[THROTTLE] - cfg.esc_min) / (cfg.rc_flpsp + 1));// will make it possible in althold as well
+        if(f.ARMED && cfg.rc_flpsp && cfg.acc_calibrated && UpsideDown && !f.ANGLE_MODE) // Putting flipsupport here
+            rcCommand[THROTTLE] = cfg.esc_min + ((rcCommand[THROTTLE] - cfg.esc_min) / ((int16_t)cfg.rc_flpsp + 1));// will make it possible in althold as well
         mixTable();
         writeServos();
         writeMotors();
