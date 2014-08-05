@@ -106,6 +106,7 @@ Tricopter:
 Althold:
 - Sonar/Baro code rework/cleanup/Sonardriver. Sonaroffset generation improved with averaging.
 - Rework of Barofiltering
+- Improved Throttlestickhandling concerning mid detection. Hightchange has reduced variobrake.
 - SONAR hardwareproblem info/found:
 * Sudden errors with PWM Sonar readout. Keep Sonar pwm signal clear, use a ferrite and/or shielded dataline.
   Check your proper sonar function before first flight if you altered configuration with snr_debg = 1.
