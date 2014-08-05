@@ -670,9 +670,9 @@ void loop(void)
                     }
                     else                                                        // Stick is to center here
                     {
-                        tmp0flt = vario * cfg.bar_lag;
                         if (Althightchange)                                     // Are we coming from a hight change? Project stoppingpoint.
                         {
+                            tmp0flt = vario * cfg.bar_lag;                      // tmp0flt = projected cm.
                             if(Althightchange > 0)
                             {
                                 if (vario < 0.0f) tmp0flt = 0.0f;
