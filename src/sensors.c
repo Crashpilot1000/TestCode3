@@ -113,7 +113,7 @@ retry:
     if (feature(FEATURE_SONAR)) Sonar_init();        // Initialize Sonars here depending on Rc configuration.
     SonarLandWanted = cfg.snr_land;                  // Variable may be overwritten by failsave
 #endif
-    MainDptCut = 0.5f / (M_PI * (float)cfg.maincuthz);// Initialize Cut off frequencies for mainpid D
+    MainDptCut = RCconstPI / (float)cfg.maincuthz;   // Initialize Cut off frequencies for mainpid D
 }
 
 uint16_t batteryAdcToVoltage(uint16_t src)
