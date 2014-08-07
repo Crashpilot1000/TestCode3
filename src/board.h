@@ -131,8 +131,6 @@ typedef struct baro_t
 #define LEDRING
 #define SONAR
 
-//#define AlternativeMS5611Calc
-
 #define LED0_TOGGLE  digitalToggle(LED0_GPIO, LED0_PIN)     // Helpful macros
 #define LED0_OFF     digitalHi(LED0_GPIO, LED0_PIN)
 #define LED0_ON      digitalLo(LED0_GPIO, LED0_PIN)
