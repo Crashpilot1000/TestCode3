@@ -1,7 +1,6 @@
 #include "board.h"
 #include "mw.h"
 
-#define BMP085_OFF     digitalLo(BARO_GPIO, BARO_PIN);
 #define MS5611_ADDR    0x77                                      // MS5611, Standard address 0x77
 #define CMD_RESET      0x1E                                      // ADC reset command
 #define CMD_ADC_READ   0x00                                      // ADC read command
@@ -33,17 +32,6 @@ static uint8_t  ms5611_osr = CMD_ADC_4096;
 bool ms5611Detect(baro_t *baro)
 {
     uint8_t i, k = 0;
-    
-    if (hse_value != 12000000)                                   // PC13 (BMP085's XCLR reset input, which we use to disable it). Only needed when running at 8MHz
-    {
-        gpio_config_t gpio;
-        gpio.pin   = Pin_13;
-        gpio.speed = Speed_2MHz;
-        gpio.mode  = Mode_Out_PP;
-        gpioInit(GPIOC, &gpio);
-        BMP085_OFF;
-    }
-
     if(!i2cRead(MS5611_ADDR, CMD_PROM_RD, 1, &i)) return false;  // If we have a MS5611, it will reply.
     do
     {
@@ -96,7 +84,7 @@ static void ms5611_start_ut(void)
 static void ms5611_get_ut(void)
 {
     uint32_t tmp = ms5611_read_adc();
-    if (tmp) ms5611_ut = tmp;                                         // Keep old on error
+    if (tmp) ms5611_ut = tmp;                                    // Keep old on error
     
 }
 
@@ -134,58 +122,34 @@ static bool ms5611_crc_ok(void)
     else return false;
 }
 
-#ifdef AlternativeMS5611Calc
 static float ms5611_calculate(void)
 {
-    float dT, TEMP, OFF, OFF2, SENS, SENS2, Aux, T2;
-    dT   = (float)((int32_t)ms5611_ut - (int32_t)((uint32_t)ms5611_c[5] << 8));//dT = (float)ms5611_ut - ((float)ms5611_c[5] * 256.0f);
-    TEMP = (dT * (float)ms5611_c[6]) / 8388608.0f;
-    OFF  = (float)ms5611_c[2] * 65536.0f + (((float)ms5611_c[4] / 128.0f) * dT);
-    SENS = (float)ms5611_c[1] * 32768.0f + (((float)ms5611_c[3] / 256.0f) * dT);
-
-    if (TEMP < 0)
-    {
-        T2    = (dT   * dT) / 0x80000000;
-        TEMP  = TEMP  - T2;
-        Aux   = TEMP  * TEMP;
-        OFF2  = 2.50f * Aux;
-        SENS2 = 1.25f * Aux;
-        OFF   = OFF   - OFF2;
-        SENS  = SENS  - SENS2;
-    }
-    BaroActualTemp = (TEMP + 2000) * 0.01f;
-    return (float)((((float)ms5611_up * (SENS / 2097152.0f)) - OFF) / 32768.0f);
-}
-#else
-static float ms5611_calculate(void)
-{
-    int32_t  temp;
+    int32_t  temp, dT, T2 = 0;
     int64_t  off, sens;
-    float    T2 = 0, dT, delt, off2 = 0, sens2 = 0;
-    dT   = (float)((int32_t)ms5611_ut - (int32_t)((uint32_t)ms5611_c[5] << 8));// dTf  = (float)ms5611_ut - ((float)ms5611_c[5] * 256.0f);
-    temp = 2000 + (((int64_t)dT * ms5611_c[6]) >> 23);           // temperature
-    off  = ((int64_t)ms5611_c[2] << 16) + (int64_t)((dT / 128.0f) * (float)ms5611_c[4]);
-    sens = ((int64_t)ms5611_c[1] << 15) + (int64_t)((dT / 256.0f) * (float)ms5611_c[3]);
+    float    delt, off2 = 0.0f, sens2 = 0.0f;
+    dT   = (int32_t)ms5611_ut - (int32_t)((uint32_t)ms5611_c[5] << 8);// dTf  = (float)ms5611_ut - ((float)ms5611_c[5] * 256.0f);
+    temp = 2000 + (((int64_t)ms5611_c[6] * dT) >> 23);           // temperature
+    off  = ((int64_t)ms5611_c[2] << 16) + (((int64_t)ms5611_c[4] * dT) >> 7);
+    sens = ((int64_t)ms5611_c[1] << 15) + (((int64_t)ms5611_c[3] * dT) >> 8);
 
     if (temp < 2000)                                             // temperature lower than 20degC
     {
-        T2    = (dT * dT) / 0x80000000;
+        T2    = (int32_t)(((uint64_t)dT * (uint64_t)dT) / 0x80000000);
         delt  = (float)(temp - 2000);
         delt  = delt * delt;
         off2  = delt * 2.50f;
         sens2 = delt * 1.25f;
         if (temp < -1500)                                        // temperature lower than -15degC
         {
-            delt  = (float)(temp + 1500);
-            delt  = delt * delt;
-            off2  = off2  + delt * 7.0f;
-            sens2 = sens2 + delt * 5.5f;
+            delt   = (float)(temp + 1500);
+            delt   = delt * delt;
+            off2  += delt * 7.0f;
+            sens2 += delt * 5.5f;
         }
     }
-    temp = temp - T2;
-    BaroActualTemp = (float)temp * 0.01f;// Put out Temp (in C)
-    off     = off  - (int64_t)off2;
-    sens    = sens - (int64_t)sens2;
+    temp          -= T2;
+    BaroActualTemp = (float)temp * 0.01f;                        // Put out Temp (in C)
+    off           -= (int64_t)off2;
+    sens          -= (int64_t)sens2;
     return (float)(((((int64_t)ms5611_up * sens ) >> 21) - off) >> 15);
 }
-#endif
