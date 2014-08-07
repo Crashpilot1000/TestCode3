@@ -20,7 +20,7 @@ rcReadRawDataPtr rcReadRawFunc = NULL;                               // receive 
 uint8_t  rcOptions[CHECKBOXITEMS];
 float    axisPID[3];
 float    AvgCyclTime = 1;
-static   float dynP8[3], dynD8[3];
+static   float dynP8[2], dynD8[2];
 static   float errorGyroI[2] = { 0, 0 }, errorAngleI[2] = { 0, 0 };
 static   int32_t errorGyroI_YW = 0;
 
@@ -472,12 +472,11 @@ void loop(void)
 
     currentTime   = micros();
     currentTimeMS = millis();
-    if (!cfg.looptime || (int32_t)(currentTime - loopTime) >= 0)
+    if ((int32_t)(currentTime - loopTime) >= 0)
     {
         loopTime       = currentTime + cfg.looptime;
         computeIMU();                                                           // looptime Timeloop starts here on predefined basis
         currentTime    = micros();
-        currentTimeMS  = millis();
         FLOATcycleTime = (float)constrain(currentTime - previousTime, 1, 10000);// 1us - 10ms
         previousTime   = currentTime;
 
@@ -1275,25 +1274,24 @@ static void DoThrcmmd_DynPid(void)
             if (cfg.rc_db)
             {
                 if (tmp > cfg.rc_db) tmp -= cfg.rc_db;
-                else tmp = 0;
+                else                 tmp  = 0;
             }
-            tmp2 = min(tmp / 100, PTCHLMT);                                 // Prevent out of bounds
+            tmp2         = min(tmp / 100, PTCHLMT);                         // Prevent out of bounds
             rcCommand[i] = LkpPtchRll[tmp2] + (tmp - tmp2 * 100) * (LkpPtchRll[tmp2 + 1] - LkpPtchRll[tmp2]) / 100;
-            prop1 -= (((uint32_t)cfg.rollPitchRate * tmp) / 500);
-            prop1  = prop1 * prop2 / 100;
+            prop1       -= (((uint32_t)cfg.rollPitchRate * tmp) / 500);
+            prop1        = prop1 * prop2 / 100;
+            dynP8[i]     = ((int32_t)cfg.P8[i] * prop1) / 100;              // dynI8[axis] = (uint16_t) cfg.I8[axis] * prop1 / 100;
+            dynD8[i]     = ((int32_t)cfg.D8[i] * prop1) / 100;
         }
         else                                                                // YAW
         {
             if (cfg.rc_dbyw)
             {
                 if (tmp > cfg.rc_dbyw) tmp -= cfg.rc_dbyw;
-                else tmp = 0;
+                else                   tmp  = 0;
             }
             rcCommand[i] = tmp;
-            prop1 -= (((uint32_t)cfg.yawRate * tmp) / 500);
         }
-        dynP8[i] = ((float)cfg.P8[i] * prop1) * 0.01f;                      // dynI8[axis] = (uint16_t) cfg.I8[axis] * prop1 / 100;
-        dynD8[i] = ((float)cfg.D8[i] * prop1) * 0.01f;
         if (rcData[i] < cfg.rc_mid) rcCommand[i] = -rcCommand[i];
     }
     tmp = constrain(rcData[THROTTLE], cfg.rc_minchk, 2000);
