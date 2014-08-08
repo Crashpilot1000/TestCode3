@@ -75,7 +75,7 @@ void writeParams(uint8_t b)
 
 void checkFirstTime(bool reset)
 {
-    if (!validEEPROM() || reset) resetConf();                                             // check the EEPROM integrity
+    if ((!validEEPROM() || reset) && !f.ARMED) resetConf();                               // check the EEPROM integrity
 }
 
 // Default settings
