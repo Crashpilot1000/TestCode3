@@ -164,6 +164,8 @@ const clivalue_t valueTable[] =
     { "yawrate",                   VAR_UINT8,  &cfg.yawRate,                     0,        100, 1 },
     { "devorssi",                  VAR_UINT8,  &cfg.devorssi,                    0,          1, 0 },
     { "rssicut",                   VAR_UINT8,  &cfg.rssicut,                     0,         80, 0 },
+    { "gt_rplimp",                 VAR_UINT8,  &cfg.gt_rplimp,                   0,         99, 1 },
+    { "gt_ywlimp",                 VAR_UINT8,  &cfg.gt_ywlimp,                   0,         99, 1 },
     { "esc_min",                   VAR_UINT16, &cfg.esc_min,                     0,       2000, 0 },
     { "esc_max",                   VAR_UINT16, &cfg.esc_max,                     0,       2000, 0 },
     { "esc_nfly",                  VAR_UINT16, &cfg.esc_nfly,                    0,       2000, 1 },
