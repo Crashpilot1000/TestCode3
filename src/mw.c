@@ -132,6 +132,7 @@ static void    DoRcArmingAndBasicStuff(void);
 static void    AckTrimCheckTrimLimits(void);
 static void    computeRC(void);
 static void    GetRCandAuxfromBuf(void);
+static void    calculate_Gtune(bool inirun, uint8_t ax, int16_t Error);
 
 void pass(void)                                                             // Feature pass
 {
@@ -451,6 +452,17 @@ void loop(void)
             f.ANGLE_MODE   = 0;
             f.HORIZON_MODE = 0;
         }
+
+        if (rcOptions[BOXGTUNE] && !cfg.mainpidctrl)
+        {
+            if (!f.GTUNE)
+            {
+                f.GTUNE = 1;
+                calculate_Gtune(true, 0, 0);
+            }
+        }
+        else f.GTUNE = 0;
+        
         DoRcHeadfree();                                                         // Rotates Rc commands according mag and homeheading in headfreemode
         DoKillswitch();
         DoAirTrim();
@@ -786,6 +798,7 @@ void loop(void)
             PTermYW = constrain(PTermYW, -tmp0, tmp0);
         }
         axisPID[YAW] += PTermYW;
+        if((f.GTUNE) && f.ARMED) calculate_Gtune(false, YAW, -(int16_t)gyroData[YAW]);
 
         if(f.HORIZON_MODE) prop = (float)min(max(abs(rcCommand[PITCH]), abs(rcCommand[ROLL])), 450) / 450.0f;
 
@@ -834,6 +847,7 @@ void loop(void)
                 lastGyro[axis]   = gyroData[axis];
                 lastDTerm[axis] += RCfactor * (delta - lastDTerm[axis]);
                 DTerm            = lastDTerm[axis] * dynD8[axis] * 0.00007f;
+                if((f.GTUNE) && f.ARMED) calculate_Gtune(false, axis, (int16_t)gyroData[axis]);
                 break;
 // Alternative Controller by alex.khoroshko http://www.multiwii.com/forum/viewtopic.php?f=8&t=3671&start=30#p37465
 // But a little modified...
@@ -887,6 +901,80 @@ void loop(void)
     if((FLOATcycleTime - AvgCyclTime) > (AvgCyclTime * 0.05f)) serialCom(true); // If exceed 5% do reduced serial, but limited to 3 slow runs there
     else serialCom(false);
     AvgCyclTime += 0.0001f * (FLOATcycleTime - AvgCyclTime);                    // Slow Baseline cycletime Keep it out of cycletime loop.
+}
+
+/*
+****************************************************************************
+***                    G_Tune                                            ***
+****************************************************************************
+	G_Tune Mode
+	This is the multiwii implementation of ZERO-PID Algorithm
+	http://technicaladventure.blogspot.com/2014/06/zero-pids-tuner-for-multirotors.html
+	The algorithm has been originally developed by Mohammad Hefny (mohammad.hefny@gmail.com)
+
+	You may use/modify this algorithm on your own risk, kindly refer to above link in any future distribution.
+*/
+/*
+// version 1.0.0: MIN & MAX & Tuned Band
+// version 1.0.1:
+				a. error is gyro reading not rc - gyro.
+				b. OldError = Error no averaging.
+				c. No Min MAX BOUNDRY
+//	version 1.0.2:
+				a. no boundaries
+				b. I - Factor tune.
+				c. time_skip
+
+// Crashpilot: Reduced to just P tuning, with +-50% limit according to user set gui limit - so it is not "zero pid" anymore.
+   Tuning is limited to just work when stick is centered besides that YAW is tuned in non Acro as well.
+   See also:
+   http://diydrones.com/profiles/blogs/zero-pid-tunes-for-multirotors-part-2
+   http://www.multiwii.com/forum/viewtopic.php?f=8&t=5190
+*/
+static void calculate_Gtune(bool inirun, uint8_t ax, int16_t Error)
+{
+    static  int8_t time_skip[3];
+    static  int16_t OldError[3], lowerlimit50P[3], upperlimit50P[3];
+    int16_t tmp, tmp2;
+    uint8_t i;
+
+    if(inirun)
+    {
+        for (i = 0; i < 3; i++)
+        {
+            tmp  = cfg.P8[i];
+            tmp2 = tmp >> 1;
+            lowerlimit50P[i] = max(tmp - tmp2, 10);
+            upperlimit50P[i] = min(tmp + tmp2, 190);
+            OldError[i]  = 0;
+            time_skip[i] = -125;
+        }
+    }
+    else
+    {
+        if(rcCommand[ax] || (ax != YAW && (f.ANGLE_MODE || f.HORIZON_MODE)))// Block Tuning on stickinput. Always allow Gtune on YAW, Roll & Pitch only in acromode
+        {
+            OldError[ax]  = 0;
+            time_skip[ax] = -125;                                           // Some settletime after stick center. (125 + 15)* 3ms clycle = 420ms (ca.)
+        }
+        else
+        {
+            time_skip[ax]++;
+            if (time_skip[ax] == 15)
+            {
+                time_skip[ax] = 0;
+                if (Error && OldError[ax] && ((Error > 0 && OldError[ax] > 0) || (Error < 0 && OldError[ax] < 0))) // If old or new are 0 we are in runup or decide to need no action
+                {
+                    tmp  = ((int16_t)abs(Error) - (int16_t)abs(OldError[ax])) >> 2; // Multiwii Gyrodata are div by 4 
+                    tmp2 = cfg.P8[ax];
+                    if (tmp > 30) tmp2++;
+                    else if (tmp < -30) tmp2--;
+                    cfg.P8[ax] = constrain(tmp2, lowerlimit50P[ax], upperlimit50P[ax]);
+                }
+                OldError[ax] = Error;
+            }
+        }
+    }
 }
 
 /*
