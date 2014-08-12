@@ -225,7 +225,9 @@ static void evaluateCommand(void)
                     f.PASSTHRU_MODE        << BOXPASSTHRU |
                     rcOptions[BOXBEEPERON] << BOXBEEPERON |
                     rcOptions[BOXHEADADJ]  << BOXHEADADJ  |
-                    rcOptions[BOXOSD]      << BOXOSD);
+                    rcOptions[BOXOSD]      << BOXOSD      |
+                    f.PASSTHRU_MODE        << BOXPASSTHRU |
+                    f.GTUNE                << BOXGTUNE);
         serialize8(0);
         break;
     case MSP_RAW_IMU:
