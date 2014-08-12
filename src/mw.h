@@ -320,6 +320,10 @@ typedef struct config_t
     uint8_t  rc_flpsp;                      // [0-1] When enabled(1) and upside down in acro or horizon mode only half throttle is applied
     uint8_t  rc_motor;                      // [0-2] Behaviour when thr < rc_minchk: 0= minthrottle no regulation, 1= minthrottle&regulation, 2= Motorstop 
 
+    // G-tune related configuration
+    uint8_t  gt_rplimp;                     // [0-99%] Gtune Limit in % around roll/pitch P values below 10% practically disables these axes
+    uint8_t  gt_ywlimp;                     // [0-99%] Gtune Limit in % around yaw P values below 10% practically disables this axis
+
     // Failsafe related configuration
     uint8_t  fs_delay;                      // Guard time for failsafe activation after signal lost. 1 step = 0.1sec - 1sec in example (10)
     uint8_t  fs_ofdel;                      // Time for Landing before motors stop in 0.1sec. 1 step = 0.1sec - 20sec in example (200)
