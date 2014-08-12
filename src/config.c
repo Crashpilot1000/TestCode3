@@ -210,6 +210,9 @@ static void resetConf(void)
     cfg.rc_flpsp                  = 0;          // [0-3] When enabled(1) and upside down in acro or horizon mode throttle is reduced (see readme)
     cfg.rc_motor                  = 0;          // [0-2] Behaviour when thr < rc_minchk: 0= minthrottle no regulation, 1= minthrottle&regulation, 2= Motorstop 
 
+    cfg.gt_rplimp                 = 50;         // [0-99%] Gtune Limit in % around roll/pitch P values below 10% practically disables these axes
+    cfg.gt_ywlimp                 = 50;         // [0-99%] Gtune Limit in % around yaw P values below 10% practically disables this axis
+
     // Motor/ESC/Servo
 //  cfg.esc_min                   = 1150;       // ORIG
     cfg.esc_min                   = 1100;
