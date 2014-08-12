@@ -132,7 +132,7 @@ static void    DoRcArmingAndBasicStuff(void);
 static void    AckTrimCheckTrimLimits(void);
 static void    computeRC(void);
 static void    GetRCandAuxfromBuf(void);
-static void    calculate_Gtune(bool inirun, uint8_t ax, int16_t Error);
+static void    calculate_Gtune(bool inirun, uint8_t ax);
 
 void pass(void)                                                             // Feature pass
 {
@@ -458,7 +458,7 @@ void loop(void)
             if (!f.GTUNE)
             {
                 f.GTUNE = 1;
-                calculate_Gtune(true, 0, 0);
+                calculate_Gtune(true, 0);
             }
         }
         else f.GTUNE = 0;
@@ -798,7 +798,7 @@ void loop(void)
             PTermYW = constrain(PTermYW, -tmp0, tmp0);
         }
         axisPID[YAW] += PTermYW;
-        if((f.GTUNE) && f.ARMED) calculate_Gtune(false, YAW, -(int16_t)gyroData[YAW]);
+        if((f.GTUNE) && f.ARMED) calculate_Gtune(false, YAW);
 
         if(f.HORIZON_MODE) prop = (float)min(max(abs(rcCommand[PITCH]), abs(rcCommand[ROLL])), 450) / 450.0f;
 
@@ -847,7 +847,7 @@ void loop(void)
                 lastGyro[axis]   = gyroData[axis];
                 lastDTerm[axis] += RCfactor * (delta - lastDTerm[axis]);
                 DTerm            = lastDTerm[axis] * dynD8[axis] * 0.00007f;
-                if((f.GTUNE) && f.ARMED) calculate_Gtune(false, axis, (int16_t)gyroData[axis]);
+                if((f.GTUNE) && f.ARMED) calculate_Gtune(false, axis);
                 break;
 // Alternative Controller by alex.khoroshko http://www.multiwii.com/forum/viewtopic.php?f=8&t=3671&start=30#p37465
 // But a little modified...
@@ -930,22 +930,39 @@ void loop(void)
    See also:
    http://diydrones.com/profiles/blogs/zero-pid-tunes-for-multirotors-part-2
    http://www.multiwii.com/forum/viewtopic.php?f=8&t=5190
+   Calculation for degree sensitivity based on time_skip = 15 = 45ms (0,045s) with clycletime 3ms
+   Gyrosetting 2000DPS
+   GyroScale = (1 / 16,4 ) * RADX(see board.h) = 0,001064225154 digit per rad/s
+   We compare against 30 digits but multiwii does div by 4 so its: 120.
+   So 0,1277070 rad/sec * 0,045sec = 0,005746815 rad => * RADtoDEG => ca 0,33 Degree
+   
+   Used cli variables:
+   cfg.gt_rplimp = 50; // [0-99%] Gtune Limit in % around roll/pitch P values below 10% practically disables these axes
+   cfg.gt_ywlimp = 50; // [0-99%] Gtune Limit in % around yaw P values below 10% practically disables this axis
 */
-static void calculate_Gtune(bool inirun, uint8_t ax, int16_t Error)
+
+static void calculate_Gtune(bool inirun, uint8_t ax)
 {
     static  int8_t time_skip[3];
-    static  int16_t OldError[3], lowerlimit50P[3], upperlimit50P[3];
-    int16_t tmp, tmp2;
+    static  int16_t OldError[3], lolimP[3], hilimP[3];
+    int16_t error, tmp, tmp2;
     uint8_t i;
 
+    if(ax > 2) return;                                                      // Prevent serious abuse and write out of bounds here
+  
     if(inirun)
     {
         for (i = 0; i < 3; i++)
         {
             tmp  = cfg.P8[i];
-            tmp2 = tmp >> 1;
-            lowerlimit50P[i] = max(tmp - tmp2, 10);
-            upperlimit50P[i] = min(tmp + tmp2, 190);
+            if (i == YAW) tmp2 = (tmp * (int16_t)cfg.gt_ywlimp) / 100;
+            else tmp2 = (tmp * (int16_t)cfg.gt_rplimp) / 100;
+            if(tmp2)
+            {
+                lolimP[i] = max(tmp - tmp2, 10);
+                hilimP[i] = min(tmp + tmp2, 190);
+            }
+            else lolimP[i] = 0;                                             // Signalize loop below to not use that axis
             OldError[i]  = 0;
             time_skip[i] = -125;
         }
@@ -960,18 +977,22 @@ static void calculate_Gtune(bool inirun, uint8_t ax, int16_t Error)
         else
         {
             time_skip[ax]++;
-            if (time_skip[ax] == 15)
+            if (time_skip[ax] == 15)                                        // ca 45ms
             {
                 time_skip[ax] = 0;
-                if (Error && OldError[ax] && ((Error > 0 && OldError[ax] > 0) || (Error < 0 && OldError[ax] < 0))) // If old or new are 0 we are in runup or decide to need no action
+              
+                if(ax == YAW) error = -(int16_t)gyroData[ax];               // Feed in Gyrodata as error - no stickinput
+                else error = (int16_t)gyroData[ax];
+              
+                if (lolimP[ax] && error && OldError[ax] && ((error > 0 && OldError[ax] > 0) || (error < 0 && OldError[ax] < 0))) // If old or new are 0 we are in runup or decide to need no action
                 {
-                    tmp  = ((int16_t)abs(Error) - (int16_t)abs(OldError[ax])) >> 2; // Multiwii Gyrodata are div by 4 
+                    tmp  = ((int16_t)abs(error) - (int16_t)abs(OldError[ax])) >> 2; // Multiwii Gyrodata are div by 4 
                     tmp2 = cfg.P8[ax];
-                    if (tmp > 30) tmp2++;
+                    if (tmp > 30) tmp2++;                                   // ca 0,33 degree
                     else if (tmp < -30) tmp2--;
-                    cfg.P8[ax] = constrain(tmp2, lowerlimit50P[ax], upperlimit50P[ax]);
+                    cfg.P8[ax] = constrain(tmp2, lolimP[ax], hilimP[ax]);
                 }
-                OldError[ax] = Error;
+                OldError[ax] = error;
             }
         }
     }
