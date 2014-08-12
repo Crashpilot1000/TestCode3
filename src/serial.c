@@ -226,7 +226,6 @@ static void evaluateCommand(void)
                     rcOptions[BOXBEEPERON] << BOXBEEPERON |
                     rcOptions[BOXHEADADJ]  << BOXHEADADJ  |
                     rcOptions[BOXOSD]      << BOXOSD      |
-                    f.PASSTHRU_MODE        << BOXPASSTHRU |
                     f.GTUNE                << BOXGTUNE);
         serialize8(0);
         break;
