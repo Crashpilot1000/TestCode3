@@ -955,7 +955,11 @@ static void calculate_Gtune(bool inirun, uint8_t ax)
         for (i = 0; i < 3; i++)
         {
             tmp  = cfg.P8[i];
-            if (i == YAW) tmp2 = (tmp * (int16_t)cfg.gt_ywlimp) / 100;
+            if (i == YAW)
+            {
+                if(NumberOfMotors > 3) tmp2 = (tmp * (int16_t)cfg.gt_ywlimp) / 100; // Only allow yawtune if more than 3 motors (not bi & tricopter)
+                else tmp2 = 0;
+            }
             else tmp2 = (tmp * (int16_t)cfg.gt_rplimp) / 100;
             if(tmp2)
             {
