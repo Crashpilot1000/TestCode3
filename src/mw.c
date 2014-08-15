@@ -799,7 +799,7 @@ void loop(void)
         }
         axisPID[YAW] += PTermYW;
         if((f.GTUNE) && f.ARMED) calculate_Gtune(false, YAW);
-
+        
         if(f.HORIZON_MODE) prop = (float)min(max(abs(rcCommand[PITCH]), abs(rcCommand[ROLL])), 450) / 450.0f;
 
         for (axis = 0; axis < 2; axis++)
@@ -930,26 +930,25 @@ void loop(void)
    See also:
    http://diydrones.com/profiles/blogs/zero-pid-tunes-for-multirotors-part-2
    http://www.multiwii.com/forum/viewtopic.php?f=8&t=5190
-   Calculation for degree sensitivity based on time_skip = 15 = 45ms (0,045s) with clycletime 3ms
    Gyrosetting 2000DPS
    GyroScale = (1 / 16,4 ) * RADX(see board.h) = 0,001064225154 digit per rad/s
-   We compare against 30 digits but multiwii does div by 4 so its: 120.
-   So 0,1277070 rad/sec * 0,045sec = 0,005746815 rad => * RADtoDEG => ca 0,33 Degree
    
    Used cli variables:
    cfg.gt_rplimp = 50; // [0-99%] Gtune Limit in % around roll/pitch P values below 10% practically disables these axes
    cfg.gt_ywlimp = 50; // [0-99%] Gtune Limit in % around yaw P values below 10% practically disables this axis
 */
 
+#define GTthresh 37
 static void calculate_Gtune(bool inirun, uint8_t ax)
 {
     static  int8_t time_skip[3];
     static  int16_t OldError[3], lolimP[3], hilimP[3];
+    static  int32_t AvgGyro[3];
     int16_t error, tmp, tmp2;
     uint8_t i;
 
     if(ax > 2) return;                                                      // Prevent serious abuse and write out of bounds here
-  
+
     if(inirun)
     {
         for (i = 0; i < 3; i++)
@@ -980,20 +979,30 @@ static void calculate_Gtune(bool inirun, uint8_t ax)
         }
         else
         {
+            if(!time_skip[ax]) AvgGyro[ax] = 0;
             time_skip[ax]++;
-            if (time_skip[ax] == 15)                                        // ca 45ms
+            if(time_skip[ax] > 0) AvgGyro[ax] += 128 * ((int16_t)gyroData[ax] / 128); // Chop some jitter and average
+
+            if (time_skip[ax] == 16)                                        // ca 48 ms
             {
+                AvgGyro[ax] /= time_skip[ax];                               // AvgGyro[ax] has now very clean gyrodata
                 time_skip[ax] = 0;
-              
-                if(ax == YAW) error = -(int16_t)gyroData[ax];               // Feed in Gyrodata as error - no stickinput
-                else error = (int16_t)gyroData[ax];
-              
-                if (lolimP[ax] && error && OldError[ax] && ((error > 0 && OldError[ax] > 0) || (error < 0 && OldError[ax] < 0))) // If old or new are 0 we are in runup or decide to need no action
+                if(ax == YAW) error = -AvgGyro[ax];
+                else error = AvgGyro[ax];
+
+                if (lolimP[ax] && error && OldError[ax] && error != OldError[ax]) // Don't run when not needed or pointless to do so
                 {
-                    tmp  = ((int16_t)abs(error) - (int16_t)abs(OldError[ax])) >> 2; // Multiwii Gyrodata are div by 4 
+                    tmp  = abs(error) - abs(OldError[ax]);
                     tmp2 = cfg.P8[ax];
-                    if (tmp > 30) tmp2++;                                   // ca 0,33 degree
-                    else if (tmp < -30) tmp2--;
+                    if ((error > 0 && OldError[ax] > 0) || (error < 0 && OldError[ax] < 0))
+                    {
+                        if (tmp > GTthresh) tmp2++;
+                        else if (tmp < -GTthresh) tmp2--;
+                    }
+                    else
+                    {
+                        if (abs(tmp) > GTthresh) tmp2--;
+                    }
                     cfg.P8[ax] = constrain(tmp2, lolimP[ax], hilimP[ax]);
                 }
                 OldError[ax] = error;
