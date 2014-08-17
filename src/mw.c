@@ -991,7 +991,7 @@ static void calculate_Gtune(bool inirun, uint8_t ax)
                         {
                             if (diff_G < -cfg.gt_threP)
                             {
-                                if (ax == YAW) result_P64[ax] -= 64;
+                                if (ax == YAW) result_P64[ax] -= 70;
                                 else result_P64[ax] -= 32;
                             }
                         }
