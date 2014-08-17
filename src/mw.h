@@ -321,8 +321,9 @@ typedef struct config_t
     uint8_t  rc_motor;                      // [0-2] Behaviour when thr < rc_minchk: 0= minthrottle no regulation, 1= minthrottle&regulation, 2= Motorstop 
 
     // G-tune related configuration
-    uint8_t  gt_rplimp;                     // [0-99%] Gtune Limit in % around roll/pitch P values below 10% practically disables these axes
-    uint8_t  gt_ywlimp;                     // [0-99%] Gtune Limit in % around yaw P values below 10% practically disables this axis
+    uint8_t  gt_lolimP[3];                  // [10..200] Lower limit of P during G tune
+    uint8_t  gt_hilimP[3];                  // [0..200] Higher limit of P during G tune. 0 Disables tuning for that axis.
+    int8_t   gt_threP;                      // [1..50] Threshold for P during G tune
 
     // Failsafe related configuration
     uint8_t  fs_delay;                      // Guard time for failsafe activation after signal lost. 1 step = 0.1sec - 1sec in example (10)
