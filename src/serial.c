@@ -160,7 +160,7 @@ static void evaluateCommand(void)
         Real_GPS_coord[LON] = read32();
         GPS_altitude = read16();
         GPS_speed = read16();
-        GPS_update |= 2;        // New data signalisation to GPS functions
+        GPS_update |= 2;                              // New data signalisation to GPS functions
         headSerialReply(0);
         break;
     case MSP_SET_PID:
@@ -170,6 +170,8 @@ static void evaluateCommand(void)
             cfg.I8[i] = read8();
             cfg.D8[i] = read8();
         }
+        cfg.P8[PIDROLL]  = max(cfg.P8[PIDROLL], 1);   // Prevent div by zero in pid controller
+        cfg.P8[PIDPITCH] = max(cfg.P8[PIDPITCH], 1);  // Prevent div by zero in pid controller
         headSerialReply(0);
         break;
     case MSP_SET_BOX:
