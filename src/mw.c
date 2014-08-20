@@ -785,23 +785,39 @@ void loop(void)
         tmp0flt /= 3000.0f;
         //VERY DIRTY! IS ALREADY FIXED BUT NOT IN THIS UPLOAD BECAUSE DONE IN IMU PART THERE
 
-        tmp0  = ((int32_t)rcCommand[YAW] * (((int32_t)cfg.yawRate << 1) + 40)) >> 5;
-        error = tmp0 - ((int32_t)gyroData[YAW] >> 2);                           // Less Gyrojitter works actually better
-        if (abs(tmp0) > 50) errorGyroI_YW = 0;
-        else errorGyroI_YW = constrain(errorGyroI_YW + (int32_t)(error * (float)cfg.I8[YAW] * tmp0flt), -268435454, 268435454);
-        axisPID[YAW] = constrain(errorGyroI_YW >> 13, -250, 250);
-        PTermYW      = ((int32_t)error * (int32_t)cfg.P8[YAW]) >> 6;
-        if(NumberOfMotors > 3)                                                  // Constrain YAW by D value if not servo driven in that case servolimits apply
+        if (cfg.rc_oldyw)                                                       // [0/1] 0 = multiwii 2.3 yaw, 1 = older yaw
         {
-            tmp0 = 300;
-            if(cfg.D8[YAW]) tmp0 -= (int32_t)cfg.D8[YAW];
-            PTermYW = constrain(PTermYW, -tmp0, tmp0);
+            PTermYW      = ((int32_t)cfg.P8[YAW] * (100 - (int32_t)cfg.yawRate * (int32_t)abs(rcCommand[YAW]) / 500)) / 100;
+            tmp0         = (int32_t)gyroData[YAW] >> 2;
+            axisPID[YAW] = rcCommand[YAW] - tmp0 * PTermYW / 80;
+            if ((abs(tmp0) > 640) || (abs(rcCommand[YAW]) > 100))
+                errorGyroI_YW = 0;
+            else
+            {
+                error         = ((int32_t)rcCommand[YAW] * 80 / (int32_t)cfg.P8[YAW]) - tmp0;
+                errorGyroI_YW = constrain(errorGyroI_YW + (int32_t)(error * tmp0flt), -16000, +16000); // WindUp
+                axisPID[YAW] += (errorGyroI_YW / 125 * cfg.I8[YAW]) >> 6;              
+            }
         }
-        axisPID[YAW] += PTermYW;
+        else
+        {
+            tmp0  = ((int32_t)rcCommand[YAW] * (((int32_t)cfg.yawRate << 1) + 40)) >> 5;
+            error = tmp0 - ((int32_t)gyroData[YAW] >> 2);                       // Less Gyrojitter works actually better
+            if (abs(tmp0) > 50) errorGyroI_YW = 0;
+            else errorGyroI_YW = constrain(errorGyroI_YW + (int32_t)(error * (float)cfg.I8[YAW] * tmp0flt), -268435454, +268435454);
+            axisPID[YAW] = constrain(errorGyroI_YW >> 13, -250, 250);
+            PTermYW      = ((int32_t)error * (int32_t)cfg.P8[YAW]) >> 6;
+            if(NumberOfMotors > 3)                                              // Constrain YAW by D value if not servo driven in that case servolimits apply
+            {
+                tmp0 = 300;
+                if (cfg.D8[YAW]) tmp0 -= (int32_t)cfg.D8[YAW];
+                PTermYW = constrain(PTermYW, -tmp0, tmp0);
+            }
+            axisPID[YAW] += PTermYW;  
+        }
         if(f.GTUNE && f.ARMED) calculate_Gtune(false, YAW);
         
         if(f.HORIZON_MODE) prop = (float)min(max(abs(rcCommand[PITCH]), abs(rcCommand[ROLL])), 450) / 450.0f;
-
         for (axis = 0; axis < 2; axis++)
         {
             rcCommandAxis = (float)rcCommand[axis];                             // Calculate common values for pid controllers
@@ -868,8 +884,8 @@ void loop(void)
                 DTerm             = -((float)cfg.D8[axis] * lastDTerm[axis] * 0.00001f);// D scaled up by 2
                 break;
             }                                                                   // End of Switch
-            if (f.GTUNE && f.ARMED) calculate_Gtune(false, axis);
             axisPID[axis] = (float)((int32_t)(PTerm + ITerm - DTerm + 0.5f));   // Round up result.
+            if (f.GTUNE && f.ARMED) calculate_Gtune(false, axis);
         }
         
         if (f.ARMED)
