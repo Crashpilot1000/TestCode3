@@ -209,6 +209,7 @@ static void resetConf(void)
     cfg.rc_killt                  = 0;          // Time in ms when your arm switch becomes a Killswitch, 0 disables the Killswitch, can not be used together with FEATURE_INFLIGHT_ACC_CAL
     cfg.rc_flpsp                  = 0;          // [0-3] When enabled(1) and upside down in acro or horizon mode throttle is reduced (see readme)
     cfg.rc_motor                  = 0;          // [0-2] Behaviour when thr < rc_minchk: 0= minthrottle no regulation, 1= minthrottle&regulation, 2= Motorstop 
+    cfg.rc_oldyw                  = 0;          // [0/1] 0 = multiwii 2.3 yaw, 1 = older yaw
 
     // G-tune
     cfg.gt_lolimP[ROLL]           = 20;         // [10..200] Lower limit of ROLL P during G tune.
