@@ -217,7 +217,7 @@ static void resetConf(void)
     cfg.gt_hilimP[ROLL]           = 70;         // [0..200] Higher limit of ROLL P during G tune. 0 Disables tuning for that axis.
     cfg.gt_hilimP[PITCH]          = 70;         // [0..200] Higher limit of PITCH P during G tune. 0 Disables tuning for that axis.
     cfg.gt_hilimP[YAW]            = 70;         // [0..200] Higher limit of YAW P during G tune. 0 Disables tuning for that axis.
-    cfg.gt_threP                  = 10;         // [1..50] Threshold for P during G tune default 10. Note: Working range is 5 - 30 on my setups.
+    cfg.gt_pwr                    = 0;          // [0..10] Strength of adjustment
 
     // Motor/ESC/Servo
 //  cfg.esc_min                   = 1150;       // ORIG
