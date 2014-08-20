@@ -323,7 +323,7 @@ typedef struct config_t
     // G-tune related configuration
     uint8_t  gt_lolimP[3];                  // [10..200] Lower limit of P during G tune
     uint8_t  gt_hilimP[3];                  // [0..200] Higher limit of P during G tune. 0 Disables tuning for that axis.
-    int8_t   gt_threP;                      // [1..50] Threshold for P during G tune
+    int8_t   gt_pwr;                        // [0..10] Strength of adjustment
 
     // Failsafe related configuration
     uint8_t  fs_delay;                      // Guard time for failsafe activation after signal lost. 1 step = 0.1sec - 1sec in example (10)
