@@ -36,7 +36,8 @@ So you have lower and higher limits for each P for every axis. The preset range 
 If you want tighter ranges change them here. The gt_loP_XXX can not be lower than "10" that means a P of "1.0" in the gui. So you can not have "Zero P",
 you are in maybe sluggish initial control.
 If you want to exclude one axis from the tuning you must set gt_hiP_XXX to zero. Let's say you want to disable yaw tuning write in cli
-"set gt_hiP_yw = 0"
+"set gt_hiP_yw = 0". Note: The Mwii Wiki advises you to trim the yaw axis on your transmitter. If you have done so (yaw not neutral on your rc)
+yawtuning will be disabled.
 
 Setting the strength of tuning:
 gt_pwr [0..10] Strength of adjustment.
