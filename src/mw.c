@@ -805,7 +805,7 @@ void loop(void)
             error = tmp0 - ((int32_t)gyroData[YAW] >> 2);                       // Less Gyrojitter works actually better
             if (abs(tmp0) > 50) errorGyroI_YW = 0;
             else errorGyroI_YW = constrain(errorGyroI_YW + (int32_t)(error * (float)cfg.I8[YAW] * tmp0flt), -268435454, +268435454);
-            axisPID[YAW] = constrain(errorGyroI_YW >> 13, -250, 250);
+            axisPID[YAW] = constrain(errorGyroI_YW >> 13, -250, +250);
             PTermYW      = ((int32_t)error * (int32_t)cfg.P8[YAW]) >> 6;
             if(NumberOfMotors > 3)                                              // Constrain YAW by D value if not servo driven in that case servolimits apply
             {
@@ -955,7 +955,7 @@ void loop(void)
     cfg.gt_hilimP[ROLL]   = 70; [0..200]  Higher limit of ROLL P during G tune. 0 Disables tuning for that axis.
     cfg.gt_hilimP[PITCH]  = 70; [0..200]  Higher limit of PITCH P during G tune. 0 Disables tuning for that axis.
     cfg.gt_hilimP[YAW]    = 70; [0..200]  Higher limit of YAW P during G tune. 0 Disables tuning for that axis.
-    cfg.gt_pwr            = 5;  [0..10] Strength of adjustment
+    cfg.gt_pwr            = 0;  [0..10] Strength of adjustment
 */
 
 static void calculate_Gtune(bool inirun, uint8_t ax)
