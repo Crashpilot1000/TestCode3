@@ -170,7 +170,7 @@ const clivalue_t valueTable[] =
     { "gt_hiP_rll",                VAR_UINT8,  &cfg.gt_hilimP[ROLL],             0,        200, 1 },
     { "gt_hiP_ptch",               VAR_UINT8,  &cfg.gt_hilimP[PITCH],            0,        200, 1 },
     { "gt_hiP_yw",                 VAR_UINT8,  &cfg.gt_hilimP[YAW],              0,        200, 1 },
-    { "gt_threP",                  VAR_INT8,   &cfg.gt_threP,                    1,         50, 1 },
+    { "gt_pwr",                    VAR_INT8,   &cfg.gt_pwr,                      0,         10, 1 },
     { "esc_min",                   VAR_UINT16, &cfg.esc_min,                     0,       2000, 0 },
     { "esc_max",                   VAR_UINT16, &cfg.esc_max,                     0,       2000, 0 },
     { "esc_nfly",                  VAR_UINT16, &cfg.esc_nfly,                    0,       2000, 1 },
