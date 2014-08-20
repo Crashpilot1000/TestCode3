@@ -453,7 +453,7 @@ void loop(void)
             f.HORIZON_MODE = 0;
         }
 
-        if (rcOptions[BOXGTUNE] && !cfg.mainpidctrl)
+        if (rcOptions[BOXGTUNE])
         {
             if (!f.GTUNE)
             {
@@ -847,7 +847,6 @@ void loop(void)
                 lastGyro[axis]   = gyroData[axis];
                 lastDTerm[axis] += RCfactor * (delta - lastDTerm[axis]);
                 DTerm            = lastDTerm[axis] * dynD8[axis] * 0.00007f;
-                if(f.GTUNE && f.ARMED) calculate_Gtune(false, axis);
                 break;
 // Alternative Controller by alex.khoroshko http://www.multiwii.com/forum/viewtopic.php?f=8&t=3671&start=30#p37465
 // But a little modified...
@@ -869,6 +868,7 @@ void loop(void)
                 DTerm             = -((float)cfg.D8[axis] * lastDTerm[axis] * 0.00001f);// D scaled up by 2
                 break;
             }                                                                   // End of Switch
+            if (f.GTUNE && f.ARMED) calculate_Gtune(false, axis);
             axisPID[axis] = (float)((int32_t)(PTerm + ITerm - DTerm + 0.5f));   // Round up result.
         }
         
@@ -936,10 +936,10 @@ void loop(void)
     cfg.gt_lolimP[ROLL]   = 20; [10..200] Lower limit of ROLL P during G tune.
     cfg.gt_lolimP[PITCH]  = 20; [10..200] Lower limit of PITCH P during G tune.
     cfg.gt_lolimP[YAW]    = 20; [10..200] Lower limit of YAW P during G tune.
-    cfg.gt_hilimP[ROLL]   = 70; [0..200] Higher limit of ROLL P during G tune. 0 Disables tuning for that axis.
-    cfg.gt_hilimP[PITCH]  = 70; [0..200] Higher limit of PITCH P during G tune. 0 Disables tuning for that axis.
-    cfg.gt_hilimP[YAW]    = 70; [0..200] Higher limit of YAW P during G tune. 0 Disables tuning for that axis.
-    cfg.gt_threP          = 40; [1..120] Threshold for P during G tune
+    cfg.gt_hilimP[ROLL]   = 70; [0..200]  Higher limit of ROLL P during G tune. 0 Disables tuning for that axis.
+    cfg.gt_hilimP[PITCH]  = 70; [0..200]  Higher limit of PITCH P during G tune. 0 Disables tuning for that axis.
+    cfg.gt_hilimP[YAW]    = 70; [0..200]  Higher limit of YAW P during G tune. 0 Disables tuning for that axis.
+    cfg.gt_pwr            = 5;  [0..10] Strength of adjustment
 */
 
 static void calculate_Gtune(bool inirun, uint8_t ax)
@@ -947,7 +947,7 @@ static void calculate_Gtune(bool inirun, uint8_t ax)
     static  int8_t time_skip[3];
     static  int16_t OldError[3], result_P64[3];
     static  int32_t AvgGyro[3];
-    int16_t error, diff_G;
+    int16_t error, diff_G, threshP;
     uint8_t i;
 
     if (inirun)
@@ -956,7 +956,8 @@ static void calculate_Gtune(bool inirun, uint8_t ax)
         {
             if ((cfg.gt_hilimP[i] && cfg.gt_lolimP[i] > cfg.gt_hilimP[i]) ||    // User config error disable axis for tuning
                (NumberOfMotors < 4 && i == YAW)) cfg.gt_hilimP[i] = 0;          // Disable Yawtuning for everything below a quadcopter
-            result_P64[i] = (int16_t)cfg.P8[i] * 64;                            // 6 bit extra resolution. Equal to "<< 6"
+            if(cfg.P8[i] < cfg.gt_lolimP[i]) cfg.P8[i] = cfg.gt_lolimP[i];
+            result_P64[i] = (int16_t)cfg.P8[i] << 6;                            // 6 bit extra resolution for P.
             OldError[i]   = 0;
             time_skip[i]  = -125;
         }
@@ -966,42 +967,55 @@ static void calculate_Gtune(bool inirun, uint8_t ax)
         if(rcCommand[ax] || (ax != YAW && (f.ANGLE_MODE || f.HORIZON_MODE)))    // Block Tuning on stickinput. Always allow Gtune on YAW, Roll & Pitch only in acromode
         {
             OldError[ax]  = 0;
-            time_skip[ax] = -125;                                               // Some settletime after stick center. (125 + 15)* 3ms clycle = 420ms (ca.)
+            time_skip[ax] = -125;                                               // Some settletime after stick center. (125 + 16)* 3ms clycle = 423ms (ca.)
         }
         else
         {
             if (!time_skip[ax]) AvgGyro[ax] = 0;
             time_skip[ax]++;
-            if (time_skip[ax] > 0) AvgGyro[ax] += 128 * ((int16_t)gyroData[ax] / 128); // Chop some jitter and average
+            if (time_skip[ax] > 0)
+            {
+                if (ax == YAW) AvgGyro[ax] += 32 * ((int16_t)gyroData[ax] / 32);// Chop some jitter and average
+                else AvgGyro[ax] += 128 * ((int16_t)gyroData[ax] / 128);        // Chop some jitter and average
+            }
 
             if (time_skip[ax] == 16)                                            // ca 48 ms
             {
                 AvgGyro[ax] /= time_skip[ax];                                   // AvgGyro[ax] has now very clean gyrodata
                 time_skip[ax] = 0;
-                if (ax == YAW) error = -AvgGyro[ax];
-                else error = AvgGyro[ax];
 
+                if (ax == YAW)
+                {
+                    threshP = 20;
+                    error   = -AvgGyro[ax];
+                }
+                else
+                {
+                    threshP = 10;
+                    error   = AvgGyro[ax];
+                }
+              
                 if (cfg.gt_hilimP[ax] && error && OldError[ax] && error != OldError[ax]) // Don't run when not needed or pointless to do so
                 {
                     diff_G = abs(error) - abs(OldError[ax]);
                     if ((error > 0 && OldError[ax] > 0) || (error < 0 && OldError[ax] < 0))
                     {
-                        if (diff_G > cfg.gt_threP) result_P64[ax] += 70;        // Shift balance a little on the plus side.
+                        if (diff_G > threshP) result_P64[ax] += 64 + cfg.gt_pwr;// Shift balance a little on the plus side.
                         else
                         {
-                            if (diff_G < -cfg.gt_threP)
+                            if (diff_G < -threshP)
                             {
-                                if (ax == YAW) result_P64[ax] -= 70;
+                                if (ax == YAW) result_P64[ax] -= 64 + cfg.gt_pwr;
                                 else result_P64[ax] -= 32;
                             }
                         }
                     }
                     else
                     {
-                        if (abs(diff_G) > cfg.gt_threP && ax != YAW) result_P64[ax] -= 32; // Don't use antiwobble for YAW
+                        if (abs(diff_G) > threshP && ax != YAW) result_P64[ax] -= 32; // Don't use antiwobble for YAW
                     }
-                    result_P64[ax] = constrain(result_P64[ax], (int16_t)cfg.gt_lolimP[ax] * 64, (int16_t)cfg.gt_hilimP[ax] * 64);
-                    cfg.P8[ax]     = result_P64[ax] / 64;
+                    result_P64[ax] = constrain(result_P64[ax], (int16_t)cfg.gt_lolimP[ax] << 6, (int16_t)cfg.gt_hilimP[ax] << 6);
+                    cfg.P8[ax]     = result_P64[ax] >> 6;
                 }
                 OldError[ax] = error;
             }
