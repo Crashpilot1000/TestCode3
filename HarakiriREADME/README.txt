@@ -19,13 +19,13 @@ Naze32 Harakiri10 Summer Games pre2.6
 - Added MWII 2.3 Yaw algo, reworked "I" part.
 - Added older MWII 2.1 Yaw algo as selectable parameter rc_oldyw = [0/1] 0 = multiwii 2.3 yaw (default), 1 = older yaw
 - Added Mhefnys's G-Tune in stripped down form. So there are new parameters. For further reference look in G-Tune.txt!
-    gt_lolimP[ROLL]  = 20 [10..200] Lower limit of ROLL P during G tune.
-    gt_lolimP[PITCH] = 20 [10..200] Lower limit of PITCH P during G tune.
-    gt_lolimP[YAW]   = 20 [10..200] Lower limit of YAW P during G tune.
-    gt_hilimP[ROLL]  = 70 [0..200]  Higher limit of ROLL P during G tune. 0 Disables tuning for that axis.
-    gt_hilimP[PITCH] = 70 [0..200]  Higher limit of PITCH P during G tune. 0 Disables tuning for that axis.
-    gt_hilimP[YAW]   = 70 [0..200]  Higher limit of YAW P during G tune. 0 Disables tuning for that axis.
-    gt_pwr           = 0  [0..10]   Strength of adjustment
+  gt_loP_rll  = 20 [10..200] Lower limit of ROLL P during G tune.  Note "20" means "2.0" in the gui.
+  gt_loP_ptch = 20 [10..200] Lower limit of PITCH P during G tune. Note "20" means "2.0" in the gui.
+  gt_loP_yw   = 20 [10..200] Lower limit of YAW P during G tune.   Note "20" means "2.0" in the gui.
+  gt_hiP_rll  = 70 [0..200]  Higher limit of ROLL P during G tune. 0 Disables tuning for that axis.  Note "70" means "7.0" in the gui.
+  gt_hiP_ptch = 70 [0..200]  Higher limit of PITCH P during G tune. 0 Disables tuning for that axis. Note "70" means "7.0" in the gui.
+  gt_hiP_yw   = 70 [0..200]  Higher limit of YAW P during G tune. 0 Disables tuning for that axis.   Note "70" means "7.0" in the gui.
+  gt_pwr      = 0  [0..10]   Strength of adjustment
 - "Repaired" Horizon mode, was too tame on the "edges".
 - Imu rearrangements:
 --Reworked the mwii acc lowpassfilter stuff to proper time dependency i.e frequency filter. Therefor:
