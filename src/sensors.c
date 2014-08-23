@@ -1,22 +1,22 @@
 #include "board.h"
 #include "mw.h"
 
-bool   calibratingA = false;                         // ACC cal
-bool   calibratingM = false;                         // Magnetometer
+bool   calibratingA = false;                                      // ACC cal
+bool   calibratingM = false;                                      // Magnetometer
 
 float  MainDptCut;
 bool   MpuSpecial;
 extern uint16_t batteryWarningVoltage;
 extern uint8_t  batteryCellCount;
-float  magCal[3];                                    // Gain for each axis, populated at sensor init
-float  gyroZero[3];                                  // Populated upon initialization
+float  magCal[3];                                                 // Gain for each axis, populated at sensor init
+float  gyroZero[3];                                               // Populated upon initialization
 bool   havel3g4200d = false;
 
-sensor_t acc;                                        // acc access functions
-sensor_t gyro;                                       // gyro access functions
-baro_t   baro;                                       // barometer access functions
-uint8_t  accHardware = ACC_DEFAULT;                  // which accel chip is used/detected
-static   bool  GyroCalCompromised = false;           // Normal Gyro calibration could not be done, so wacky or presaved offsets are used
+sensor_t acc;                                                     // acc access functions
+sensor_t gyro;                                                    // gyro access functions
+baro_t   baro;                                                    // barometer access functions
+uint8_t  accHardware = ACC_DEFAULT;                               // which accel chip is used/detected
+static   bool  GyroCalCompromised = false;                        // Normal Gyro calibration could not be done, so wacky or presaved offsets are used
 static   float GyroScale16;
 
 static void GYRO_Common(void);
@@ -26,44 +26,44 @@ static void ACC_getRawRot(void);
 static void Gyro_getRawRot(void);
 static void Gyro_Calibrate(void);
 
-void SensorDetectAndINI(void)                        // "enabledSensors" is "0" in config.c so all sensors disabled per default
+void SensorDetectAndINI(void)                                     // "enabledSensors" is "0" in config.c so all sensors disabled per default
 {
     int16_t deg, min;
     uint8_t sig          = 0;
     bool    ack          = false;
     bool    haveMpu6k    = false;
 
-    GyroScale16 = (16.0f / 16.4f) * RADX;            // GYRO part. RAD per SECOND, take into account that gyrodata are div by X
-    if (mpu6050Detect(&acc, &gyro))                  // Autodetect gyro hardware. We have MPU3050 or MPU6050.
+    GyroScale16 = (16.0f / 16.4f) * RADX;                         // GYRO part. RAD per SECOND, take into account that gyrodata are div by X
+    if (mpu6050Detect(&acc, &gyro))                               // Autodetect gyro hardware. We have MPU3050 or MPU6050.
     {
-        haveMpu6k = true;                            // this filled up  acc.* struct with init values
+        haveMpu6k = true;                                         // this filled up  acc.* struct with init values
     }
     else if (l3g4200dDetect(&gyro))
     {
         havel3g4200d = true;
-        GyroScale16 = (16.0f / 14.2857f) * RADX;     // GYRO part. RAD per SECOND, take into account that gyrodata are div by X
+        GyroScale16 = (16.0f / 14.2857f) * RADX;                  // GYRO part. RAD per SECOND, take into account that gyrodata are div by X
     }
     else if (!mpu3050Detect(&gyro))
     {
-        failureMode(3);                              // if this fails, we get a beep + blink pattern. we're doomed, no gyro or i2c error.
+        failureMode(3);                                           // if this fails, we get a beep + blink pattern. we're doomed, no gyro or i2c error.
     }
 
-    sensorsSet(SENSOR_ACC);                          // ACC part. Will be cleared if not available
+    sensorsSet(SENSOR_ACC);                                       // ACC part. Will be cleared if not available
 retry:
     switch (cfg.acc_hdw)
     {
-    case 0:                                          // autodetect
-    case 1:                                          // ADXL345
+    case 0:                                                       // autodetect
+    case 1:                                                       // ADXL345
         if (adxl345Detect(&acc)) accHardware = ACC_ADXL345;
         if (cfg.acc_hdw == ACC_ADXL345) break;
-    case 2:                                          // MPU6050
+    case 2:                                                       // MPU6050
         if (haveMpu6k)
         {
-            mpu6050Detect(&acc, &gyro);              // yes, i'm rerunning it again.  re-fill acc struct
+            mpu6050Detect(&acc, &gyro);                           // yes, i'm rerunning it again.  re-fill acc struct
             accHardware = ACC_MPU6050;
             if (cfg.acc_hdw == ACC_MPU6050) break;
         }
-    case 3:                                          // MMA8452
+    case 3:                                                       // MMA8452
         if (mma8452Detect(&acc))
         {
             accHardware = ACC_MMA8452;
@@ -71,49 +71,49 @@ retry:
         }
     }
 
-    if (accHardware == ACC_DEFAULT)                  // Found anything? Check if user fucked up or ACC is really missing.
+    if (accHardware == ACC_DEFAULT)                               // Found anything? Check if user fucked up or ACC is really missing.
     {
         if (cfg.acc_hdw > ACC_DEFAULT)
         {
-            cfg.acc_hdw = ACC_DEFAULT;               // Nothing was found and we have a forced sensor type. User probably chose a sensor that isn't present.
+            cfg.acc_hdw = ACC_DEFAULT;                            // Nothing was found and we have a forced sensor type. User probably chose a sensor that isn't present.
             goto retry;
         }
-        else sensorsClear(SENSOR_ACC);               // We're really screwed
+        else sensorsClear(SENSOR_ACC);                            // We're really screwed
     }
 
     if (sensors(SENSOR_ACC)) acc.init();
     if (haveMpu6k && accHardware == ACC_MPU6050) MpuSpecial = true;
     else MpuSpecial = false;
 
-    if (feature(FEATURE_PASS)) return;               // Stop here we need just ACC for Vibrationmonitoring if present
+    if (feature(FEATURE_PASS)) return;                            // Stop here we need just ACC for Vibrationmonitoring if present
     if (feature(FEATURE_GPS) && !SerialRCRX) gpsInit(cfg.gps_baudrate);// SerialRX and GPS can not coexist.
-    gyro.init();                                     // this is safe because either mpu6050 or mpu3050 or lg3d20 sets it, and in case of fail, we never get here.
+    gyro.init();                                                  // this is safe because either mpu6050 or mpu3050 or lg3d20 sets it, and in case of fail, we never get here.
     if (havel3g4200d) l3g4200dConfig();
     else if (!haveMpu6k) mpu3050Config();
-    Gyro_Calibrate();                                // Do Gyrocalibration here (is blocking), provides nice Warmuptime for the following rest!
+    Gyro_Calibrate();                                             // Do Gyrocalibration here (is blocking), provides nice Warmuptime for the following rest!
 #ifdef MAG
     if (hmc5883lDetect())
     {
         sensorsSet(SENSOR_MAG);
-        hmc5883lInit(magCal);                        // Crashpilot: Calculate Gains / Scale
-        deg = cfg.mag_dec / 100;                     // calculate magnetic declination
+        hmc5883lInit(magCal);                                     // Crashpilot: Calculate Gains / Scale
+        deg = cfg.mag_dec / 100;                                  // calculate magnetic declination
         min = cfg.mag_dec % 100;
-        magneticDeclination = ((float)deg + ((float)min / 60.0f)); // heading is in decimaldeg units NO 0.1 deg shit here
+        magneticDeclination = ((float)deg + ((float)min / 60.0f));// heading is in decimaldeg units NO 0.1 deg shit here
     }
 #endif
-#ifdef BARO                                          // No delay necessary since Gyrocal blocked a lot already
-    ack = i2cRead(0x77, 0x77, 1, &sig);              // Check Baroadr.(MS & BMP) BMP will say hello here, MS not
-    if ( ack) ack = bmp085Detect(&baro);             // Are we really dealing with BMP?
-    if (!ack) ack = ms5611Detect(&baro);             // No, Check for MS Baro
+#ifdef BARO                                                       // No delay necessary since Gyrocal blocked a lot already
+    ack = i2cRead(0x77, 0x77, 1, &sig);                           // Check Baroadr.(MS & BMP) BMP will say hello here, MS not
+    if ( ack) ack = bmp085Detect(&baro);                          // Are we really dealing with BMP?
+    if (!ack) ack = ms5611Detect(&baro);                          // No, Check for MS Baro
     if (ack) sensorsSet(SENSOR_BARO);
     if(cfg.esc_nfly) ESCnoFlyThrottle = constrain(cfg.esc_nfly, cfg.esc_min, cfg.esc_max); // Set the ESC PWM signal threshold for not flyable RPM
     else ESCnoFlyThrottle = cfg.esc_min + (((cfg.esc_max - cfg.esc_min) * 5) / 100); // If not configured, take 5% above esc_min
 #endif
 #ifdef SONAR
-    if (feature(FEATURE_SONAR)) Sonar_init();        // Initialize Sonars here depending on Rc configuration.
-    SonarLandWanted = cfg.snr_land;                  // Variable may be overwritten by failsave
+    if (feature(FEATURE_SONAR)) Sonar_init();                     // Initialize Sonars here depending on Rc configuration.
+    SonarLandWanted = cfg.snr_land;                               // Variable may be overwritten by failsave
 #endif
-    MainDptCut = RCconstPI / (float)cfg.maincuthz;   // Initialize Cut off frequencies for mainpid D
+    MainDptCut = RCconstPI / (float)cfg.maincuthz;                // Initialize Cut off frequencies for mainpid D
 }
 
 uint16_t batteryAdcToVoltage(uint16_t src)
@@ -127,18 +127,42 @@ void batteryInit(void)
 {
     uint32_t i;
     uint32_t voltage = 0;
-    for (i = 0; i < 32; i++)                         // average up some voltage readings
+    for (i = 0; i < 32; i++)                                      // average up some voltage readings
     {
         voltage += adcGetChannel(ADC_BATTERY);
         delay(10);
     }
     voltage = batteryAdcToVoltage((uint16_t)(voltage / 32));
-    for (i = 2; i < 6; i++)                          // autodetect cell count, going from 2S..6S
+    for (i = 2; i < 6; i++)                                       // autodetect cell count, going from 2S..6S
     {
         if (voltage < i * cfg.vbatmaxcellvoltage) break;
     }
     batteryCellCount = i;
-    batteryWarningVoltage = i * cfg.vbatmincellvoltage; // 3.3V per cell minimum, configurable in CLI
+    batteryWarningVoltage = i * cfg.vbatmincellvoltage;           // 3.3V per cell minimum, configurable in CLI
+}
+
+static void alignBoardyaw(float *rpy)
+{
+    float tmp;
+    switch(cfg.align_board_yaw)                                   // 0 = 0 Deg. 1 = 90 Deg. 2 = 180 Deg. 3 = 270 Deg Clockwise
+    {
+    case 0:
+        break;
+    case 1:                                                       // 1 = 90 Deg CW
+        tmp        =  rpy[ROLL];
+        rpy[ROLL]  =  rpy[PITCH];
+        rpy[PITCH] = -tmp;
+        break;
+    case 2:                                                       // 2 = 180 Deg CW
+        rpy[ROLL]  = -rpy[ROLL];
+        rpy[PITCH] = -rpy[PITCH];
+        break;
+    case 3:                                                       // 3 = 270 Deg CW
+        tmp        =  rpy[ROLL];
+        rpy[ROLL]  = -rpy[PITCH];
+        rpy[PITCH] =  tmp;
+        break;
+    }
 }
 
 // ALIGN_GYRO = 0,
@@ -148,7 +172,7 @@ void alignSensors(uint8_t type, int16_t *data)
 {
     uint8_t i;
     int16_t tmp[3], axis;
-    for (i = 0; i < 3; i++) tmp[i] = data[i];        // make a copy :(
+    for (i = 0; i < 3; i++) tmp[i] = data[i];                     // make a copy
     for (i = 0; i < 3; i++)
     {
         axis = cfg.align[type][i];
@@ -227,6 +251,8 @@ static void GYRO_Common(void)
         gyroData[i] = (float)tmp * 3.2f;
         gyroADC[i] *= GyroScale16;                                // gyroADC delivered in 16 * rad/s
     }
+    alignBoardyaw(gyroData);
+    alignBoardyaw(gyroADC);
 }
 
 static void Acc_500Hz_AVG(float *xyztmp, uint16_t count)          // Do just 500 HZ - not all ACC do 1KHZ
@@ -280,6 +306,7 @@ static void ACC_Common(void)
             if(cfg.acc_calibrated) accADC[axis] -= cfg.accZero[axis];
             else accADC[axis] = 1.0f;
         }
+        alignBoardyaw(accADC);
     }
 }
 
@@ -396,42 +423,42 @@ void Baro_update(void)                                            // Note Pressu
 #endif
 
 #ifdef SONAR
-#define SonarErrorLimit 5                                                             // We will bridge 5 consecutive faulty reads, HC-SR04 = 300ms Maxbotix = 500ms
+#define SonarErrorLimit 5                                         // We will bridge 5 consecutive faulty reads, HC-SR04 = 300ms Maxbotix = 500ms
 void Sonar_update(void)
 {
-    static  int16_t  LastGoodSonarAlt = -1;                                           // Initialize with errorvalue
+    static  int16_t  LastGoodSonarAlt = -1;                       // Initialize with errorvalue
     static  uint32_t AcceptTimer = 0;
-    static  uint8_t  Errorcnt = 0;                                                    // This is compared to SonarErrorLimit
-    int16_t LastSonarAlt = sonarAlt;                                                  // Save Last Alt here for comparison
+    static  uint8_t  Errorcnt = 0;                                // This is compared to SonarErrorLimit
+    int16_t LastSonarAlt = sonarAlt;                              // Save Last Alt here for comparison
     uint8_t tilt;
-    int32_t newdata = GetSnr();                                                       // Keep it running for disconnect detection
-    if (newdata)                                                                      // 100 ms with Maxbotix, 60ms with HC-SR04
+    int32_t newdata = GetSnr();                                   // Keep it running for disconnect detection
+    if (newdata)                                                  // 100 ms with Maxbotix, 60ms with HC-SR04
     {
         sonarAlt = newdata;
-        tilt = 100 - constrain(TiltValue * 100.0f, 0, 100.0f);                        // We don't care for upsidedownstuff, because althold is disabled than anyway
-        if (cfg.snr_dbg) { debug[1] = tilt; debug[2] = sonarAlt; }                    // Give raw tilt & sonar in debugmode
+        tilt = 100 - constrain(TiltValue * 100.0f, 0, 100.0f);    // We don't care for upsidedownstuff, because althold is disabled than anyway
+        if (cfg.snr_dbg) { debug[1] = tilt; debug[2] = sonarAlt; }  // Give raw tilt & sonar in debugmode
         if (sonarAlt >= cfg.snr_min && sonarAlt <= cfg.snr_max && tilt < cfg.snr_tilt)
         {
             LastGoodSonarAlt = sonarAlt;
-            Errorcnt = SonarBreach = 0;                                               // 0 = Breach unknown, 1 = breached lower limit, 2 = breached upper limit (not used)
+            Errorcnt = SonarBreach = 0;                           // 0 = Breach unknown, 1 = breached lower limit, 2 = breached upper limit (not used)
         }
         else
-        {                                                                             // So sonarvalues are not sane here
-            Errorcnt = min(Errorcnt + 1, SonarErrorLimit);                            // Increase Errorcount within upper limit            
-            if (tilt < cfg.snr_tilt && sonarAlt != -1)                                // Determine Limit breach type independent of tilt
+        {                                                         // So sonarvalues are not sane here
+            Errorcnt = min(Errorcnt + 1, SonarErrorLimit);        // Increase Errorcount within upper limit            
+            if (tilt < cfg.snr_tilt && sonarAlt != -1)            // Determine Limit breach type independent of tilt
             {
-                if (sonarAlt <= cfg.snr_min) SonarBreach = 1;                         // We breached lower limit
-                if (sonarAlt >= cfg.snr_max) SonarBreach = 2;                         // We breached upper limit
+                if (sonarAlt <= cfg.snr_min) SonarBreach = 1;     // We breached lower limit
+                if (sonarAlt >= cfg.snr_max) SonarBreach = 2;     // We breached upper limit
             }
-            else SonarBreach = 0;                                                     // 0 = Breach unknown, 1 = breached lower limit, 2 = breached upper limit (not used)
-            if (Errorcnt != SonarErrorLimit) sonarAlt = LastGoodSonarAlt;             // Bridge error with last value, when it's -1 we take care later
+            else SonarBreach = 0;                                 // 0 = Breach unknown, 1 = breached lower limit, 2 = breached upper limit (not used)
+            if (Errorcnt != SonarErrorLimit) sonarAlt = LastGoodSonarAlt; // Bridge error with last value, when it's -1 we take care later
             else sonarAlt = -1;
         }
 
         if (LastSonarAlt != -1 && sonarAlt != -1 && cfg.snr_diff && abs(sonarAlt - LastSonarAlt) > cfg.snr_diff) // Too much Difference between reads?
             sonarAlt = -1;
         
-        if (sonarAlt < 0)                                                             // Handle error here separately
+        if (sonarAlt < 0)                                         // Handle error here separately
         {
             LastGoodSonarAlt = -1;
             SonarStatus = 0;
@@ -441,17 +468,17 @@ void Sonar_update(void)
             switch(SonarStatus)
             {
             case 0:
-                SonarStatus++;                                                        // Definition of "SonarStatus" 0 = no contact, 1 = Made first contact, 2 = Steady contact
-                AcceptTimer = currentTimeMS + 700;                                    // Set 700 ms timeout before signalizing "steady contact" this exceeds our "bridging" from above
+                SonarStatus++;                                    // Definition of "SonarStatus" 0 = no contact, 1 = Made first contact, 2 = Steady contact
+                AcceptTimer = currentTimeMS + 700;                // Set 700 ms timeout before signalizing "steady contact" this exceeds our "bridging" from above
                 break;
             case 1:
-                if (currentTimeMS >= AcceptTimer) SonarStatus++;                      // 2 = Steady contact // imu/getEstimatedAltitude will be happy to know
+                if (currentTimeMS >= AcceptTimer) SonarStatus++;  // 2 = Steady contact // imu/getEstimatedAltitude will be happy to know
             default:
                 break;
             }
         }
     }
-    if (cfg.snr_dbg) debug[0] = sonarAlt;                                             // Display Sonaralt like seen by althold
+    if (cfg.snr_dbg) debug[0] = sonarAlt;                         // Display Sonaralt like seen by althold
 }
 #endif
 
@@ -475,6 +502,7 @@ void Mag_getADC(void)
     Lasttime = TimeNow;
     Mag_getRawADC_With_Gain();                                    // Read mag sensor with orientation correction do nothing more for now
     for (i = 0; i < 3; i++) magADCfloat[i] -= cfg.magZero[i];     // Adjust by BIAS (gathered by user calibration)
+    alignBoardyaw(magADCfloat);
     HaveNewMag = true;
 }
 
