@@ -280,6 +280,7 @@ typedef struct config_t
     float    angleTrim[2];                  // trim
     // sensor-related stuff
     int8_t   align[3][3];                   // acc, gyro, mag alignment (ex: with sensor output of X, Y, Z, align of 1 -3 2 would return X, -Z, Y)
+    uint8_t  align_board_yaw;               // 0 = 0 Deg. 1 = 90 Deg. 2 = 180 Deg. 3 = 270 Deg Clockwise
     uint8_t  acc_hdw;                       // Which acc hardware to use on boards with more than one device
     float    acc_lpfhz;                     // Set the Low Pass Filter factor for ACC in Hz.
     uint16_t gy_lpf;                        // mpuX050 LPF setting (TODO make it work on L3GD as well)
