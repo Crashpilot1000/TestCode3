@@ -144,7 +144,7 @@ static void resetConf(void)
     cfg.thrMid8                   = 50;
 
     memcpy(&cfg.align, default_align, sizeof(cfg.align));
-
+    cfg.align_board_yaw           = 0;          // 0 = 0 Deg. 1 = 90 Deg. 2 = 180 Deg. 3 = 270 Deg Clockwise
     cfg.mag_dec                   = 113;        // Crashpilot //cfg.acc_hdw = ACC_DEFAULT;// default/autodetect
     cfg.mag_time                  = 1;          // (1-6) Calibration time in minutes
     cfg.mag_gain                  = 0;          // 0(default) = 1.9 GAUSS ; 1 = 2.5 GAUSS (problematic copters, will reduce 20% resolution)
