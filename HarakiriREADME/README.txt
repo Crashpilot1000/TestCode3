@@ -43,6 +43,7 @@ Naze32 Harakiri10 Summer Games pre2.6
 - Rework Magcalibration. Removed old calibration and variables: mag_oldctime and mag_oldcalib.
   mag_time (1-6) will set the mag calibration time in minutes now. Default is 1.
   Tested "intelligent mag calibrating" idea but results vary too much between setups/copters that it didn't work out. Idea still in mind, maybe later..
+- align_board_yaw 0 = 0 Deg.(default) 1 = 90 Deg. 2 = 180 Deg. 3 = 270 Deg Clockwise. No recalibration needed when changing board orientation.
 - Reworked Failsafe / cleanup / improved hoverthrottle for fs with barofunction. Since the throttlechannel is not valid in FS situations, a statistic average is taken gathered during the flight.
   If that average is not bigger than rc_minchk + 5% an error is assumed and the predefined fs_rcthr is taken as althold baselinethrottle.
   Thx to Hinkel for pointing out that subject here: http://www.multiwii.com/forum/viewtopic.php?f=23&t=3524&start=280#p41661
