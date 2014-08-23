@@ -235,6 +235,7 @@ const clivalue_t valueTable[] =
     { "align_mag_x",               VAR_INT8,   &cfg.align[ALIGN_MAG][0],        -3,          3, 0 },
     { "align_mag_y",               VAR_INT8,   &cfg.align[ALIGN_MAG][1],        -3,          3, 0 },
     { "align_mag_z",               VAR_INT8,   &cfg.align[ALIGN_MAG][2],        -3,          3, 0 },
+    { "align_board_yaw",           VAR_UINT8,  &cfg.align_board_yaw,             0,          3, 0 },
     { "acc_hdw",                   VAR_UINT8,  &cfg.acc_hdw,                     0,          3, 0 },
     { "acc_lpfhz",                 VAR_FLOAT,  &cfg.acc_lpfhz,                   0,        100, 1 },
     { "acc_altlpfhz",              VAR_UINT8,  &cfg.acc_altlpfhz,                1,        100, 1 },
