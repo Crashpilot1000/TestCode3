@@ -7,7 +7,7 @@ flags_t  f;
 int16_t  debug[4];
 uint32_t currentTime   = 0;
 uint32_t currentTimeMS = 0;
-uint32_t previousTime  = 0;
+float    FLOATcycleTime = 0;
 uint8_t  vbat;                                                       // battery voltage in 0.1V steps
 float    telemTemperature1;                                          // gyro sensor temperature
 volatile uint16_t failsafeCnt   = 0;
@@ -132,6 +132,7 @@ static void    DoRcArmingAndBasicStuff(void);
 static void    AckTrimCheckTrimLimits(void);
 static void    computeRC(void);
 static void    GetRCandAuxfromBuf(void);
+static void    ZeroErrorAngleI(void);
 static void    calculate_Gtune(bool inirun, uint8_t ax);
 
 void pass(void)                                                             // Feature pass
@@ -176,7 +177,7 @@ void loop(void)
     static uint32_t RTLGeneralTimer, AltRCTimer0 = 0, BaroAutoTimer, loopTime;
     float           delta, RCfactor, rcCommandAxis;
     float           PTerm = 0, ITerm = 0, DTerm = 0, PTermACC = 0, ITermACC = 0, ITermGYRO = 0, error = 0, prop = 0;
-    static float    lastGyro[2] = {0, 0}, lastDTerm[2] = {0, 0}, FLOATcycleTime = 0;
+    static float    lastGyro[2] = {0, 0}, lastDTerm[2] = {0, 0};
     static uint8_t  ThrFstTimeCenter = 0, AutolandState = 0, AutostartState = 0, HoverThrcnt, RTLstate, ReduceBaroI = 0;
     static int8_t   Althightchange;
     static uint16_t HoverThrottle;
@@ -424,11 +425,11 @@ void loop(void)
         if (cfg.mixerConfiguration == MULTITYPE_FLYING_WING || cfg.mixerConfiguration == MULTITYPE_AIRPLANE) f.HEADFREE_MODE = 0;
         if (sensors(SENSOR_ACC))
         {
-            if (rcOptions[BOXANGLE])                                            // Prevent simulan Angle and Horizon mode
+            if (rcOptions[BOXANGLE])                                            // Prevent simultan Angle and Horizon mode
             {                                                                   // In that case Angle mode will win.
                 if (!f.ANGLE_MODE)
                 {
-                    errorAngleI[ROLL] = errorAngleI[PITCH] = 0.0f;
+                    ZeroErrorAngleI();
                     f.ANGLE_MODE   = 1;
                     f.HORIZON_MODE = 0;
                 }
@@ -440,7 +441,7 @@ void loop(void)
                 {
                     if (!f.HORIZON_MODE)
                     {
-                        errorAngleI[ROLL] = errorAngleI[PITCH] = 0.0f;
+                        ZeroErrorAngleI();
                         f.HORIZON_MODE = 1;
                     }
                 }
@@ -486,11 +487,8 @@ void loop(void)
     currentTimeMS = millis();
     if ((int32_t)(currentTime - loopTime) >= 0)
     {
-        loopTime       = currentTime + cfg.looptime;
+        loopTime = currentTime + cfg.looptime;
         computeIMU();                                                           // looptime Timeloop starts here on predefined basis
-        currentTime    = micros();
-        FLOATcycleTime = (float)constrain(currentTime - previousTime, 1, 10000);// 1us - 10ms
-        previousTime   = currentTime;
 
 #ifdef BARO
         if (sensors(SENSOR_BARO))                                               // The normal stuff to keep it simple
@@ -765,7 +763,7 @@ void loop(void)
                         Last_GPS_angle[axis] = GPS_angle[axis];
                         tmp0flt              = GPS_angle[axis] / (float)maxbank10;
                         tmp0flt              = constrain(tmp0flt, -1.0f, 1.0f); // Put in range of -1 +1
-                        GPS_angle[axis]      = (float)((int32_t)(((tmp0flt * (1.0f - GPSEXPO) + tmp0flt * tmp0flt * tmp0flt * GPSEXPO) * (float)maxbank10) + 0.5f)); // Do expo here, and some rounding and jitter cutoff
+                        GPS_angle[axis]      = SpecialIntegerRoundUp((tmp0flt * (1.0f - GPSEXPO) + tmp0flt * tmp0flt * tmp0flt * GPSEXPO) * (float)maxbank10); // Do expo here, and some rounding and jitter cutoff
                     }
                     else
                     {
@@ -788,7 +786,7 @@ void loop(void)
         if (cfg.rc_oldyw)                                                       // [0/1] 0 = multiwii 2.3 yaw, 1 = older yaw
         {
             PTermYW      = ((int32_t)cfg.P8[YAW] * (100 - (int32_t)cfg.yawRate * (int32_t)abs(rcCommand[YAW]) / 500)) / 100;
-            tmp0         = (int32_t)gyroData[YAW] >> 2;
+            tmp0         = SpecialIntegerRoundUp(gyroData[YAW] * 0.25f);
             axisPID[YAW] = rcCommand[YAW] - tmp0 * PTermYW / 80;
             if ((abs(tmp0) > 640) || (abs(rcCommand[YAW]) > 100))
                 errorGyroI_YW = 0;
@@ -800,9 +798,9 @@ void loop(void)
             }
         }
         else
-        {
+       {
             tmp0  = ((int32_t)rcCommand[YAW] * (((int32_t)cfg.yawRate << 1) + 40)) >> 5;
-            error = tmp0 - ((int32_t)gyroData[YAW] >> 2);                       // Less Gyrojitter works actually better
+            error = tmp0 - SpecialIntegerRoundUp(gyroData[YAW] * 0.25f);          // Less Gyrojitter works actually better
             if (abs(tmp0) > 50) errorGyroI_YW = 0;
             else errorGyroI_YW = constrain(errorGyroI_YW + (int32_t)(error * (float)cfg.I8[YAW] * tmp0flt), -268435454, +268435454);
             axisPID[YAW] = constrain(errorGyroI_YW >> 13, -250, +250);
@@ -815,6 +813,7 @@ void loop(void)
             }
             axisPID[YAW] += PTermYW;  
         }
+        axisPID[YAW] = SpecialIntegerRoundUp(axisPID[YAW]);                     // Round up result.
         if(f.GTUNE && f.ARMED) calculate_Gtune(false, YAW);
         
         if(f.HORIZON_MODE) prop = (float)min(max(abs(rcCommand[PITCH]), abs(rcCommand[ROLL])), 450) / 450.0f;
@@ -884,7 +883,7 @@ void loop(void)
                 DTerm             = -((float)cfg.D8[axis] * lastDTerm[axis] * 0.00001f);// D scaled up by 2
                 break;
             }                                                                   // End of Switch
-            axisPID[axis] = (float)((int32_t)(PTerm + ITerm - DTerm + 0.5f));   // Round up result.
+            axisPID[axis] = SpecialIntegerRoundUp(PTerm + ITerm - DTerm);       // Round up result.
             if (f.GTUNE && f.ARMED) calculate_Gtune(false, axis);
         }
         
@@ -1098,6 +1097,19 @@ static void DisArmCopter(void)
     f.OK_TO_ARM    = 0;
 }
 
+static void ZeroErrorAngleI(void)
+{
+    errorAngleI[0] = 0.0f;
+    errorAngleI[1] = 0.0f;
+}
+
+int32_t SpecialIntegerRoundUp(float val)                                        // If neg value just represents a change in direction rounding to next higher number is "more" negative
+{
+    if (val > 0) return val + 0.5f;
+    else if (val < 0) return val - 0.5f;
+    else return 0;
+}
+
 void devClear(stdev_t *dev)
 {
     dev->m_n = 0;
@@ -1173,8 +1185,7 @@ static void DoRcArmingAndBasicStuff(void)
             errorGyroI[0]  = 0;
             errorGyroI[1]  = 0;
             errorGyroI_YW  = 0;
-            errorAngleI[0] = 0;
-            errorAngleI[1] = 0;
+            ZeroErrorAngleI();
         }
         if (!f.ARMED && limit[YAW] == 1)
         {
