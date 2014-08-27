@@ -491,7 +491,7 @@ extern float    accSmooth[3];
 extern float    accADC[3], gyroADC[3], magADCfloat[3];
 extern uint32_t currentTime;
 extern uint32_t currentTimeMS;
-extern uint32_t previousTime;
+extern float    FLOATcycleTime;
 extern bool     calibratingA;
 extern bool     calibratingM;
 
@@ -615,6 +615,7 @@ void     LD1_ON(void);
 void     devClear(stdev_t *dev);
 void     devPush(stdev_t *dev, float x);
 float    devStandardDeviation(stdev_t *dev);
+int32_t  SpecialIntegerRoundUp(float val);
 
 // IMU
 void     imuInit(void);
