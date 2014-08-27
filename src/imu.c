@@ -43,7 +43,6 @@ void computeIMU(void)
     static   int16_t triywavg[4];
     static   uint8_t triywavgpIDX = 0;
     static   uint32_t prevT;
-    uint32_t curT;
     uint8_t  axis, i;
     float    flttmp;
     if (MpuSpecial) GETMPU6050();
@@ -53,10 +52,10 @@ void computeIMU(void)
         Gyro_getADC();                                                        // Also feeds gyroData
         if (sensors(SENSOR_ACC)) ACC_getADC();
     }
-    curT               = micros();
-    ACCDeltaTimeINS    = (float)(curT - prevT) * 0.000001f;                   // ACCDeltaTimeINS is in seconds now
-    ACCDeltaTimeINS    = constrain(ACCDeltaTimeINS, 0.0001f, 0.5f);           // Constrain to range 0,1ms - 500ms
-    prevT              = curT;
+    currentTime     = micros();
+    FLOATcycleTime  = (float)constrain(currentTime - prevT, 1, 100000);       // 1us - 100ms
+    ACCDeltaTimeINS = FLOATcycleTime * 0.000001f;                             // ACCDeltaTimeINS is in seconds now
+    prevT           = currentTime;
 
     if(cfg.acc_calibrated) getEstimatedAttitude();                            // acc_calibrated just can turn true if acc present.
     
@@ -176,8 +175,8 @@ static void getEstimatedAttitude(void)
     cp           = cosf(pitchRAD);
     sp           = sinf(pitchRAD);
     TiltValue    = cr * cp;                                                   // We do this correctly here
-    angle[ROLL]  = (float)((int32_t)( rollRAD  * RADtoDEG10 + 0.5f));         // Use rounded values, eliminate jitter for main PID I and D
-    angle[PITCH] = (float)((int32_t)(-pitchRAD * RADtoDEG10 + 0.5f));
+    angle[ROLL]  = SpecialIntegerRoundUp( rollRAD  * RADtoDEG10);
+    angle[PITCH] = SpecialIntegerRoundUp(-pitchRAD * RADtoDEG10);
     if (TiltValue >= 0)   UpsDwnTimer = 0;
     else if(!UpsDwnTimer) UpsDwnTimer = currentTime + 20000;                  // Use 20ms Timer here to make absolutely sure we are upsidedown
     if (UpsDwnTimer && currentTime > UpsDwnTimer) UpsideDown = true;
