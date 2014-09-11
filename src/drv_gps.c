@@ -24,8 +24,9 @@ AIRBORNE_2G = 7         250               100                 50000          Lar
 AIRBORNE_4G = 8         500               100                 50000          Large
 */
 
-// #define Pedestrian
 #define ubloxtweaks
+// #define Pedestrian
+
 const  uint32_t init_speed[5] = { 9600, 19200, 38400, 57600, 115200 };
 static const uint8_t ubloxInit[] =
 {
