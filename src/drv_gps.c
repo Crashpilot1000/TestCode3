@@ -274,7 +274,7 @@ static bool GPS_newFrame(char c)                                                
 ////////////////////////////////////////////////////////////////////////////////////
 void gpsInit(uint32_t baudrate)                                                     // Called in Main
 {
-    uint8_t i;
+    uint16_t i;
     uint32_t timeout;
 
     GPS_Present = 0;
