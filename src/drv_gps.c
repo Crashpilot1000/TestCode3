@@ -282,7 +282,7 @@ void gpsInit(uint32_t baudrate)                                                 
 
     GPS_Present = 0;
     delay(2000);                                                                    // let it init
-    timeout = millis() + 12000; 					                                          // 12 sec timeout
+    timeout = millis() + 20000; 					                                          // 20 sec timeout
     while (!GPS_Present && millis() < timeout)                                      // Repeat while no GPS Data
     {
         uart2Init(baudrate, GPS_NewData, false);                                    // Set up Interrupthandler
