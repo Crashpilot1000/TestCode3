@@ -145,7 +145,7 @@ static void resetConf(void)
 
     memcpy(&cfg.align, default_align, sizeof(cfg.align));
     cfg.align_board_yaw           = 0;          // 0 = 0 Deg. 1 = 90 Deg. 2 = 180 Deg. 3 = 270 Deg Clockwise
-    cfg.mag_dec                   = 113;        // Crashpilot //cfg.acc_hdw = ACC_DEFAULT;// default/autodetect
+    cfg.mag_dec                   = 1338;        // Crashpilot //cfg.acc_hdw = ACC_DEFAULT;// default/autodetect
     cfg.mag_time                  = 1;          // (1-6) Calibration time in minutes
     cfg.mag_gain                  = 0;          // 0(default) = 1.9 GAUSS ; 1 = 2.5 GAUSS (problematic copters, will reduce 20% resolution)
     cfg.acc_hdw                   = 2;          // Crashpilot MPU6050
@@ -266,14 +266,14 @@ static void resetConf(void)
     cfg.gps_type                  = 1;          // GPS_NMEA = 0, GPS_UBLOX = 1, GPS_MTK16 = 2, GPS_MTK19 = 3, GPS_UBLOX_DUMB = 4
     cfg.gps_baudrate              = 115200;     //38400; // Changed 8/6/13 to 115200;
     cfg.gps_ins_vel               = 0.6f;       // Crashpilot GPS INS The LOWER the value the closer to gps speed // Dont go to high here
-    cfg.gps_lag                   = 2000;       // GPS Lag in ms
+    cfg.gps_lag                   = 500;       // GPS Lag in ms
     cfg.gps_ph_minsat             = 6;          // Minimal Satcount for PH, PH on RTL is still done with 5Sats or more
     cfg.gps_expo                  = 20;         // 1 - 99 % defines the actual Expo applied for GPS
-    cfg.gps_ph_settlespeed        = 10;         // 1 - 200 cm/s PH settlespeed in cm/s
-    cfg.gps_ph_brakemaxangle      = 15;         // 1 - 45 Degree Maximal Overspeedbrake
+    cfg.gps_ph_settlespeed        = 5;         // 1 - 200 cm/s PH settlespeed in cm/s
+    cfg.gps_ph_brakemaxangle      = 20;         // 1 - 45 Degree Maximal Overspeedbrake
     cfg.gps_ph_minbrakepercent    = 50;         // 1 - 99% minimal percent of "brakemaxangle" left over for braking. Example brakemaxangle = 6 so 50 Percent is 3..
     cfg.gps_ph_brkacc             = 40;         // [1 - 500] Is the assumed negative braking acceleration in cm/(s*s) of copter. Value is positive though. It will be a timeout. The lower the Value the longe the Timeout
-    cfg.gps_maxangle              = 35;         // 10 - 45 Degree Maximal over all GPS bank angle
+    cfg.gps_maxangle              = 40;         // 10 - 45 Degree Maximal over all GPS bank angle
     cfg.gps_wp_radius             = 200;
 //  cfg.rtl_mnh                   = 20;         // (0 - 200m) Minimal RTL hight in m, 0 disables feature
 	  cfg.rtl_mnh                   = 0;          // (0 - 200m) Minimal RTL hight in m, 0 disables feature
@@ -365,7 +365,7 @@ static void resetConf(void)
     // DaddyWalross Sonar: I DON'T KNOW! But it uses HC-SR04 so i apply the same limits (10cm-400cm) to its output
     // Sonar minimal hight must be higher (including temperature difference) than the physical lower limit of the sensor to do a proximity alert
     // NOTE: Sonar is def. not a must - have. But nice to have.
-    cfg.snr_type                  = 3;          // 0=PWM56 HC-SR04, 1=RC78 HC-SR04, 2=I2C(DaddyWalross), 3=MBPWM56, 4=MBRC78, 5=I2C(SRFxx), 6=I2C (MX12x2)
+    cfg.snr_type                  = 1;          // 0=PWM56 HC-SR04, 1=RC78 HC-SR04, 2=I2C(DaddyWalross), 3=MBPWM56, 4=MBRC78, 5=I2C(SRFxx), 6=I2C (MX12x2)
     cfg.snr_min                   = 30;         // Valid Sonar minimal range in cm (10 - 200) see warning above
     cfg.snr_max                   = 200;        // Valid Sonar maximal range in cm (50 - 700)
     cfg.snr_dbg                   = 0;          // 1 Sends Sonardata (within defined range and tilt) to debug[0] and tiltvalue to debug[1], debug[0] will be -1 if out of range/tilt. debug[2] contains raw sonaralt, like before
