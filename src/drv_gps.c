@@ -482,14 +482,19 @@ static bool GPS_MTK_newFrame(uint8_t data)                                      
     return parsed;
 }
 
-#define FRAME_GGA  1
-#define FRAME_RMC  2
-#define DIGIT_TO_VAL(_x)    (_x - '0')                                              // This code is used for parsing NMEA data
+#define FRAME_GGA     1
+#define FRAME_RMC     2
+#define NmeaBufBytes 15
+#define DIGIT_TO_VAL(_x) (_x - '0')                                                 // This code is used for parsing NMEA data
 static uint32_t GPS_coord_to_degrees(char* s)
 {
     char *p, *q;
-    uint32_t deg = 0, min = 0, frac_min = 0, i;
-    for (p = s; isdigit((unsigned char)*p); p++);                                   // scan for decimal point or end of field
+    uint32_t deg = 0, min = 0, frac_min = 0, i = 0;
+    for (p = s; isdigit((unsigned char)*p); p++)                                    // scan for decimal point or end of field
+    {
+        i++;
+        if (i >= NmeaBufBytes) return 0;                                            // Check for out of bounds
+    }
     q = s;
     while ((p - q) > 2)                                                             // convert degrees
     {
@@ -506,16 +511,16 @@ static uint32_t GPS_coord_to_degrees(char* s)
         q = p + 1;
         for (i = 0; i < 4; i++)
         {
-            frac_min *= 10;
+            if (frac_min) frac_min *= 10;
             if (isdigit((unsigned char)*q)) frac_min += DIGIT_TO_VAL(*q++);
         }
     }
-    return deg * 10000000UL + (min * 1000000UL + frac_min * 100UL) / 6;
+    return deg * 10000000 + (min * 1000000 + frac_min * 100) / 6;
 }
 
 static uint32_t grab_fields(char *src, uint8_t mult)                                // convert string to uint32
 {
-    uint8_t i;
+    uint8_t i, MultOffs;
     uint32_t tmp = 0;
     for (i = 0; src[i] != 0; i++)
     {
@@ -523,8 +528,13 @@ static uint32_t grab_fields(char *src, uint8_t mult)                            
         {
             i++;
             if (!mult) break;
-            else src[i + mult] = 0;
+            else
+            {
+                MultOffs = i + mult;
+                if(MultOffs < NmeaBufBytes) src[MultOffs] = 0;                      // Check for out of bounds
+            }
         }
+        if(i >= NmeaBufBytes) break;                                                // Check for out of bounds
         tmp *= 10;
         if (src[i] >= '0' && src[i] <= '9') tmp += src[i] - '0';
     }
@@ -543,7 +553,7 @@ static bool GPS_NMEA_newFrame(char c)
 {
     uint8_t frameOK = 0;
     static uint8_t param = 0, offset = 0, parity = 0;
-    static char string[15];
+    static char string[NmeaBufBytes];
     static uint8_t checksum_param, frame = 0;
 
     if (c == '$') param = offset = parity = 0;
@@ -573,7 +583,7 @@ static bool GPS_NMEA_newFrame(char c)
             else if (param == 5 && string[0] == 'W') IRQGPS_coord[LON] = -IRQGPS_coord[LON];
             else if (param == 6)
             {
-                GPS_FIX = (string[0]  > '0');
+                GPS_FIX = (string[0] > '0');
             }
             else if (param == 7)
             {
@@ -588,7 +598,7 @@ static bool GPS_NMEA_newFrame(char c)
         {
             if (param == 7)
             {
-                IRQGPS_speed = ((uint32_t)grab_fields(string, 1) * 5144L) / 1000L;  // gps speed in cm/s will be used for navigation
+                IRQGPS_speed = ((uint32_t)grab_fields(string, 1) * 5144) / 1000;    // gps speed in cm/s will be used for navigation
             }
             else if (param == 8)
             {
@@ -613,7 +623,7 @@ static bool GPS_NMEA_newFrame(char c)
     }
     else
     {
-        if (offset < 15) string[offset++] = c;
+        if (offset < NmeaBufBytes) string[offset++] = c;
         if (!checksum_param) parity ^= c;
     }
     if (frame) GPS_Present = 1;
