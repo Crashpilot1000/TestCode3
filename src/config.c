@@ -209,15 +209,16 @@ static void resetConf(void)
     cfg.rc_killt                  = 0;          // Time in ms when your arm switch becomes a Killswitch, 0 disables the Killswitch, can not be used together with FEATURE_INFLIGHT_ACC_CAL
     cfg.rc_flpsp                  = 0;          // [0-3] When enabled(1) and upside down in acro or horizon mode throttle is reduced (see readme)
     cfg.rc_motor                  = 0;          // [0-2] Behaviour when thr < rc_minchk: 0= minthrottle no regulation, 1= minthrottle&regulation, 2= Motorstop 
+    cfg.rc_oldyw                  = 0;          // [0/1] 0 = multiwii 2.3 yaw, 1 = older yaw
 
     // G-tune
-    //cfg.gt_lolimP[ROLL] = 20; // [10..200] Lower limit of ROLL P during G tune.
-    //cfg.gt_lolimP[PITCH] = 20; // [10..200] Lower limit of PITCH P during G tune.
-    //cfg.gt_lolimP[YAW] = 20; // [10..200] Lower limit of YAW P during G tune.
-    //cfg.gt_hilimP[ROLL] = 70; // [0..200] Higher limit of ROLL P during G tune. 0 Disables tuning for that axis.
-    //cfg.gt_hilimP[PITCH] = 70; // [0..200] Higher limit of PITCH P during G tune. 0 Disables tuning for that axis.
-    //cfg.gt_hilimP[YAW] = 70; // [0..200] Higher limit of YAW P during G tune. 0 Disables tuning for that axis.
-    //cfg.gt_pwr = 0; // [0..10] Strength of adjustment
+    cfg.gt_lolimP[ROLL]           = 20;         // [10..200] Lower limit of ROLL P during G tune.
+    cfg.gt_lolimP[PITCH]          = 20;         // [10..200] Lower limit of PITCH P during G tune.
+    cfg.gt_lolimP[YAW]            = 20;         // [10..200] Lower limit of YAW P during G tune.
+    cfg.gt_hilimP[ROLL]           = 70;         // [0..200] Higher limit of ROLL P during G tune. 0 Disables tuning for that axis.
+    cfg.gt_hilimP[PITCH]          = 70;         // [0..200] Higher limit of PITCH P during G tune. 0 Disables tuning for that axis.
+    cfg.gt_hilimP[YAW]            = 70;         // [0..200] Higher limit of YAW P during G tune. 0 Disables tuning for that axis.
+    cfg.gt_pwr                    = 0;          // [0..10] Strength of adjustment
 
     // Motor/ESC/Servo
 //  cfg.esc_min                   = 1150;       // ORIG
@@ -227,6 +228,7 @@ static void resetConf(void)
     cfg.esc_nfly                  = 1300;       // This is the absolute throttle that kicks off the "has landed timer" if it is too low cfg.rc_minchk + 5% is taken. Also baselinethr for Autostart, also plausibility check for initial Failsafethrottle
 //  cfg.esc_nfly                  = 0;          // This is the absolute throttle that kicks off the "has landed timer" if it is too low cfg.rc_minchk + 5% is taken.
     cfg.esc_pwm                   = 480;
+    cfg.esc_nwmx                  = 1;          // NewMix: 0 = mwii style, 1 = scaled handling of maxthrottlesituations
     cfg.srv_pwm                   = 50;
     cfg.pass_mot                  = 0;          // Crashpilot: Only used with feature pass. If 0 = all Motors, otherwise specific Motor
 
