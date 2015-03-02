@@ -96,11 +96,11 @@ static void resetConf(void)
 //    featureSet(FEATURE_PASS);                   // Just pass Throttlechannel
 //    featureSet(FEATURE_SONAR);
 
-    cfg.P8[ROLL]                  =  35;        // 40
+    cfg.P8[ROLL]                  =  45;        // 40
     cfg.I8[ROLL]                  =  30;
     cfg.D8[ROLL]                  =  30;
 
-    cfg.P8[PITCH]                 =  35;        // 40
+    cfg.P8[PITCH]                 =  45;        // 40
     cfg.I8[PITCH]                 =  30;
     cfg.D8[PITCH]                 =  30;
 
@@ -125,7 +125,7 @@ static void resetConf(void)
 //    cfg.I8[PIDPOS]                = 0;
 //    cfg.D8[PIDPOS]                = 0;
 
-//    cfg.P8[PIDPOSR]               = 20;         // POSHOLD_RATE_P * 10;
+//    cfg.P8[PIDPOSR]               = 12;         // POSHOLD_RATE_P * 10;
 //    cfg.I8[PIDPOSR]               = 8;          // POSHOLD_RATE_I * 100;
 //    cfg.D8[PIDPOSR]               = 45;         // POSHOLD_RATE_D * 1000;
 
@@ -133,7 +133,7 @@ static void resetConf(void)
 //    cfg.I8[PIDNAVR]               = 20;         // NAV_I * 100;
 //    cfg.D8[PIDNAVR]               = 80;         // NAV_D * 1000;
 
-    cfg.P8[PIDLEVEL]              = 70;         // 70
+    cfg.P8[PIDLEVEL]              = 80;         // 70
     cfg.I8[PIDLEVEL]              = 10;
     cfg.D8[PIDLEVEL]              = 50;
 
@@ -227,7 +227,7 @@ static void resetConf(void)
     cfg.esc_moff                  = 1000;
     cfg.esc_nfly                  = 1300;       // This is the absolute throttle that kicks off the "has landed timer" if it is too low cfg.rc_minchk + 5% is taken. Also baselinethr for Autostart, also plausibility check for initial Failsafethrottle
 //  cfg.esc_nfly                  = 0;          // This is the absolute throttle that kicks off the "has landed timer" if it is too low cfg.rc_minchk + 5% is taken.
-    cfg.esc_pwm                   = 400;
+    cfg.esc_pwm                   = 480;
     cfg.esc_nwmx                  = 1;          // NewMix: 0 = mwii style, 1 = scaled handling of maxthrottlesituations
     cfg.srv_pwm                   = 50;
     cfg.pass_mot                  = 0;          // Crashpilot: Only used with feature pass. If 0 = all Motors, otherwise specific Motor
@@ -268,7 +268,7 @@ static void resetConf(void)
     cfg.gps_ins_vel               = 0.6f;       // Crashpilot GPS INS The LOWER the value the closer to gps speed // Dont go to high here
     cfg.gps_lag                   = 500;       // GPS Lag in ms
     cfg.gps_ph_minsat             = 6;          // Minimal Satcount for PH, PH on RTL is still done with 5Sats or more
-    cfg.gps_expo                  = 20;         // 1 - 99 % defines the actual Expo applied for GPS
+    cfg.gps_expo                  = 5;         // 1 - 99 % defines the actual Expo applied for GPS
     cfg.gps_ph_settlespeed        = 5;         // 1 - 200 cm/s PH settlespeed in cm/s
     cfg.gps_ph_brakemaxangle      = 20;         // 1 - 45 Degree Maximal Overspeedbrake
     cfg.gps_ph_minbrakepercent    = 50;         // 1 - 99% minimal percent of "brakemaxangle" left over for braking. Example brakemaxangle = 6 so 50 Percent is 3..
@@ -301,8 +301,8 @@ static void resetConf(void)
     cfg.fs_nosnr                  = 1;          // When snr_land is set to 1, it is possible to ignore that on Failsafe, because FS over a tree could turn off copter
 
     // serial (USART1) baudrate
-    cfg.serial_baudrate           = 115200;
-    cfg.tele_prot                 = 0;          // Protocol ONLY used when Armed including Baudchange if necessary. 0 (Dfault)=Keep Multiwii @CurrentUSB Baud, 1=Frsky @9600Baud, 2=Mavlink @CurrentUSB Baud, 3=Mavlink @57KBaud (like stock minimOSD wants it)
+    cfg.serial_baudrate           = 19200;
+    cfg.tele_prot                 = 2;          // Protocol ONLY used when Armed including Baudchange if necessary. 0 (Dfault)=Keep Multiwii @CurrentUSB Baud, 1=Frsky @9600Baud, 2=Mavlink @CurrentUSB Baud, 3=Mavlink @57KBaud (like stock minimOSD wants it)
 
     // LED Stuff
     cfg.LED_invert                = 0;          // Crashpilot: Inversion of LED 0&1 Partly implemented because Bootup is not affected
