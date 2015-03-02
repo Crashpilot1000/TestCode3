@@ -269,7 +269,7 @@ static void resetConf(void)
     cfg.gps_lag                   = 500;       // GPS Lag in ms
     cfg.gps_ph_minsat             = 6;          // Minimal Satcount for PH, PH on RTL is still done with 5Sats or more
     cfg.gps_expo                  = 5;         // 1 - 99 % defines the actual Expo applied for GPS
-    cfg.gps_ph_settlespeed        = 5;         // 1 - 200 cm/s PH settlespeed in cm/s
+    cfg.gps_ph_settlespeed        = 100;         // 1 - 200 cm/s PH settlespeed in cm/s
     cfg.gps_ph_brakemaxangle      = 20;         // 1 - 45 Degree Maximal Overspeedbrake
     cfg.gps_ph_minbrakepercent    = 50;         // 1 - 99% minimal percent of "brakemaxangle" left over for braking. Example brakemaxangle = 6 so 50 Percent is 3..
     cfg.gps_ph_brkacc             = 40;         // [1 - 500] Is the assumed negative braking acceleration in cm/(s*s) of copter. Value is positive though. It will be a timeout. The lower the Value the longe the Timeout
