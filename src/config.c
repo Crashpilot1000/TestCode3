@@ -88,11 +88,11 @@ static void resetConf(void)
     cfg.version = EEPROM_CONF_VERSION;
     cfg.mixerConfiguration = MULTITYPE_QUADX;
     featureClearAll();
-//    featureSet(FEATURE_VBAT);
+    featureSet(FEATURE_VBAT);
     featureSet(FEATURE_PPM);
 //    featureSet(FEATURE_FAILSAFE);
 //    featureSet(FEATURE_LCD);
-//    featureSet(FEATURE_GPS);
+    featureSet(FEATURE_GPS);
 //    featureSet(FEATURE_PASS);                   // Just pass Throttlechannel
 //    featureSet(FEATURE_SONAR);
 
