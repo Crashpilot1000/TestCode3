@@ -162,7 +162,6 @@ const clivalue_t valueTable[] =
     { "thr_expo",                  VAR_UINT8,  &cfg.thrExpo8,                    0,        250, 1 },
     { "roll_pitch_rate",           VAR_UINT8,  &cfg.rollPitchRate,               0,        100, 1 },
     { "yawrate",                   VAR_UINT8,  &cfg.yawRate,                     0,        100, 1 },
-    { "rc_oldyw",                  VAR_UINT8,  &cfg.rc_oldyw,                    0,          1, 1 },
     { "devorssi",                  VAR_UINT8,  &cfg.devorssi,                    0,          1, 0 },
     { "rssicut",                   VAR_UINT8,  &cfg.rssicut,                     0,         80, 0 },
     { "gt_loP_rll",                VAR_UINT8,  &cfg.gt_lolimP[ROLL],            10,        200, 1 },
@@ -1315,26 +1314,26 @@ static void changeval(const clivalue_t *var, const int8_t adder)
     case VAR_UINT8:
     case VAR_INT8:
         value = *(char *)var->ptr;
-        value = constrain(value + adder, minimum, maximum);
+        value = constrain_int(value + adder, minimum, maximum);
         *(char *)var->ptr = (char)value;
         break;
 
     case VAR_UINT16:
     case VAR_INT16:
         value = *(short *)var->ptr;
-        value = constrain(value + adder, minimum, maximum);
+        value = constrain_int(value + adder, minimum, maximum);
         *(short *)var->ptr = (short)value;
         break;
 
     case VAR_UINT32:
         value = *(int *)var->ptr;
-        value = constrain(value + adder, minimum, maximum);
+        value = constrain_int(value + adder, minimum, maximum);
         *(int *)var->ptr = (int)value;
         break;
 
     case VAR_FLOAT:
         *(float *)&valuef = *(float *)var->ptr;
-        valuef = constrain(valuef + (float)adder/1000.0f, minimum, maximum);
+        valuef = constrain_flt(valuef + (float)adder/1000.0f, minimum, maximum);
         *(float *)var->ptr = *(float *)&valuef;
         break;
     }
@@ -1760,7 +1759,12 @@ static void cliRecal(void)
 // MAVLINK STUFF AFFECTING CLI GOES HERE
 bool baseflight_mavlink_send_paramlist(bool Reset)
 {
-    static int16_t i = 0;
+    static  int16_t i = 0;
+    uint8_t StrLength;
+    float   value = 0;
+    char    buf[17];                                    // Always send 16 chars reserve one zero byte
+    mavlink_message_t msg;
+
     if(Reset)
     {
         i = 0;
@@ -1768,7 +1772,33 @@ bool baseflight_mavlink_send_paramlist(bool Reset)
         return true;                                    // Return status not relevant but true because the "Reset" was a success
     }
     AllowProtocolAutosense = false;                     // Block Autodetect during transmission
-    baseflight_mavlink_send_singleparam(i);
+    if(i < 0 || i > (VALUE_COUNT - 1)) return true;     // Done with error but DONE
+    memset (buf, 0, 17);                                // Fill with 0 For Stringtermination
+    StrLength = min(strlen(valueTable[i].name), 16);    // Copy max 16 Bytes
+    memcpy (buf, valueTable[i].name, StrLength);
+    switch(valueTable[i].type)
+    {
+    case VAR_UINT8:
+        value = *(uint8_t *)valueTable[i].ptr;
+        break;
+    case VAR_INT8:
+        value = *(int8_t *)valueTable[i].ptr;
+        break;
+    case VAR_UINT16:
+        value = *(uint16_t *)valueTable[i].ptr;
+        break;
+    case VAR_INT16:
+        value = *(int16_t *)valueTable[i].ptr;
+        break;
+    case VAR_UINT32:
+        value = *(uint32_t *)valueTable[i].ptr;
+        break;
+    case VAR_FLOAT:
+        value = *(float *)valueTable[i].ptr;
+        break;
+    }
+    mavlink_msg_param_value_pack(MLSystemID, MLComponentID, &msg, buf, value, MAVLINK_TYPE_FLOAT, VALUE_COUNT, i);
+		baseflight_mavlink_send_message(&msg);
     i++;
     if (i == VALUE_COUNT)
     {
@@ -1777,49 +1807,6 @@ bool baseflight_mavlink_send_paramlist(bool Reset)
         return true;                                    // I am done
     }
     else return false;
-}
-
-void baseflight_mavlink_send_singleparam(int16_t Nr)
-{
-    uint8_t StrLength, MavlinkParaType = MAV_VAR_FLOAT;
-    float   value = 0;
-    char    buf[16];                                      // Always send 16 chars
-    mavlink_message_t msg;
-
-    if(Nr == -1 || Nr > (VALUE_COUNT - 1)) return;
-  
-    memset (buf, 0, 16);                                  // Fill with 0 For Stringtermination
-    StrLength = min(strlen(valueTable[Nr].name), 16);     // Copy max 16 Bytes
-    memcpy (buf, valueTable[Nr].name, StrLength);
-
-    switch(valueTable[Nr].type)
-    {
-    case VAR_UINT8:
-        value = *(uint8_t *)valueTable[Nr].ptr;
-        MavlinkParaType = MAV_VAR_UINT8;
-        break;
-    case VAR_INT8:
-        value = *(int8_t *)valueTable[Nr].ptr;
-        MavlinkParaType = MAV_VAR_INT8;
-        break;
-    case VAR_UINT16:
-        value = *(uint16_t *)valueTable[Nr].ptr;
-        MavlinkParaType = MAV_VAR_UINT16;
-        break;
-    case VAR_INT16:
-        value = *(int16_t *)valueTable[Nr].ptr;
-        MavlinkParaType = MAV_VAR_INT16;
-        break;
-    case VAR_UINT32:
-        value = *(uint32_t *)valueTable[Nr].ptr;
-        MavlinkParaType = MAV_VAR_UINT32;
-        break;
-    case VAR_FLOAT:
-        value = *(float *)valueTable[Nr].ptr;
-        break;
-    }
-    mavlink_msg_param_value_pack(MLSystemID, MLComponentID, &msg, buf, value, MavlinkParaType, VALUE_COUNT, Nr);
-		baseflight_mavlink_send_message(&msg);
 }
 
 bool baseflight_mavlink_set_param(mavlink_param_set_t *packet)
