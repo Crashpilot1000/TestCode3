@@ -295,20 +295,17 @@ void writeServos(void)
     }
 }
 
-void writeMotors(void)
-{
-    uint8_t i;
-    for (i = 0; i < NumberOfMotors; i++) pwmWriteMotor(i, motor[i]);
-}
-
 void writeAllMotors(int16_t mc)
 {
     uint8_t i;
-    for (i = 0; i < NumberOfMotors; i++) motor[i] = mc;                           // Sends commands to all motors
-    writeMotors();
+    for (i = 0; i < NumberOfMotors; i++)
+    {
+        motor[i] = mc;                           // Sends commands to all motors
+        pwmWriteMotor(i, mc);
+    }
 }
 
-void mixTable(void)
+void mixTableAndWriteMotors(void)
 {
     int32_t  Overshoot, Range, Range85;
     uint16_t aux[2];
@@ -318,17 +315,17 @@ void mixTable(void)
     switch (cfg.mixerConfiguration)                                               // airplane / servo mixes
     {
     case MULTITYPE_BI:
-        servo[4] = constrain(1500 + (cfg.tri_ydir * axisPID[YAW]) + axisPID[PITCH], 1020, 2000); // LEFT
-        servo[5] = constrain(1500 + (cfg.tri_ydir * axisPID[YAW]) - axisPID[PITCH], 1020, 2000); // RIGHT
+        servo[4] = constrain_int(1500 + (cfg.tri_ydir * axisPID[YAW]) + axisPID[PITCH], 1020, 2000); // LEFT
+        servo[5] = constrain_int(1500 + (cfg.tri_ydir * axisPID[YAW]) - axisPID[PITCH], 1020, 2000); // RIGHT
         break;
 
     case MULTITYPE_TRI:
-        servo[5] = constrain(cfg.tri_ymid + cfg.tri_ydir * axisPID[YAW], cfg.tri_ymin, cfg.tri_ymax); // REAR
+        servo[5] = constrain_int(cfg.tri_ymid + cfg.tri_ydir * axisPID[YAW], cfg.tri_ymin, cfg.tri_ymax); // REAR
         break;
 
     case MULTITYPE_GIMBAL:
-        servo[0] = constrain(cfg.gbl_pmd + (int16_t)((float)cfg.gbl_pgn * angle[PITCH] * 0.0625f) + rcCommand[PITCH], cfg.gbl_pmn, cfg.gbl_pmx);
-        servo[1] = constrain(cfg.gbl_rmd + (int16_t)((float)cfg.gbl_rgn * angle[ROLL]  * 0.0625f) + rcCommand[ROLL] , cfg.gbl_rmn, cfg.gbl_rmx);
+        servo[0] = constrain_int(cfg.gbl_pmd + (int16_t)((float)cfg.gbl_pgn * angle[PITCH] * 0.0625f) + rcCommand[PITCH], cfg.gbl_pmn, cfg.gbl_pmx);
+        servo[1] = constrain_int(cfg.gbl_rmd + (int16_t)((float)cfg.gbl_rgn * angle[ROLL]  * 0.0625f) + rcCommand[ROLL] , cfg.gbl_rmn, cfg.gbl_rmx);
         break;
 
     case MULTITYPE_AIRPLANE:
@@ -336,7 +333,7 @@ void mixTable(void)
         
    case MULTITYPE_FLYING_WING:
         if (!f.ARMED) servo[7] = cfg.rc_minchk;
-        else servo[7] = constrain(rcCommand[THROTTLE], cfg.esc_min, cfg.esc_max);
+        else servo[7] = constrain_int(rcCommand[THROTTLE], cfg.esc_min, cfg.esc_max);
         motor[0] = servo[7];
         if (f.PASSTHRU_MODE)                                                      // do not use sensors for correction, simple 2 channel mixing
         {
@@ -348,8 +345,8 @@ void mixTable(void)
             servo[3] = cfg.pitch_direction_l * axisPID[PITCH] + cfg.roll_direction_l * axisPID[ROLL];
             servo[4] = cfg.pitch_direction_r * axisPID[PITCH] + cfg.roll_direction_r * axisPID[ROLL];
         }
-        servo[3] = constrain(servo[3] + cfg.wing_left_mid, cfg.wing_left_min, cfg.wing_left_max);
-        servo[4] = constrain(servo[4] + cfg.wing_right_mid, cfg.wing_right_min, cfg.wing_right_max);
+        servo[3] = constrain_int(servo[3] + cfg.wing_left_mid, cfg.wing_left_min, cfg.wing_left_max);
+        servo[4] = constrain_int(servo[4] + cfg.wing_right_mid, cfg.wing_right_min, cfg.wing_right_max);
         break;
     }
 
@@ -374,8 +371,8 @@ void mixTable(void)
                 servo[1] += (int16_t)((float)cfg.gbl_rgn * angle[ROLL]  * 0.0625f);
             }
         }
-        servo[0] = constrain(servo[0], cfg.gbl_pmn, cfg.gbl_pmx);
-        servo[1] = constrain(servo[1], cfg.gbl_rmn, cfg.gbl_rmx);
+        servo[0] = constrain_int(servo[0], cfg.gbl_pmn, cfg.gbl_pmx);
+        servo[1] = constrain_int(servo[1], cfg.gbl_rmn, cfg.gbl_rmx);
     }
 
     if (cfg.gbl_flg & GIMBAL_FORWARDAUX)
@@ -391,10 +388,10 @@ void mixTable(void)
         else pwmWriteServo(0, LED_Value);
     }
 
-    if (NumberOfMotors > 3)                                                       // prevent "yaw jump" during yaw correction
+    if (!f.ARMED)                                                                 // If not armed
     {
-        limit        = abs(rcCommand[YAW]) + 100;
-        axisPID[YAW] = (float)constrain((int32_t)axisPID[YAW], -limit, +limit);
+        writeAllMotors(cfg.esc_moff);                                             // Stop all motors
+        return;                                                                   // And stop the rest from happening
     }
 
     Range    = cfg.esc_max - cfg.esc_min;
@@ -434,6 +431,6 @@ void mixTable(void)
             if(!cfg.rc_motor) motor[i] = cfg.esc_min;                             // cfg.rc_motor [0-2] Behaviour when thr < rc_minchk: 0= minthrottle no regulation, 1= minthrottle&regulation, 2= Motorstop 
             else if(cfg.rc_motor == 2) motor[i] = cfg.esc_moff;
         }
-        if (!f.ARMED) motor[i] = cfg.esc_moff;
+        pwmWriteMotor(i, motor[i]);
     }
 }
