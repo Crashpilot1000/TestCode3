@@ -550,7 +550,7 @@ void loop(void)
                 break;
             case 4:                                                             // Now climb with desired rate to targethight.
                 tmp0 = (int32_t)((float)AutostartFilterAlt + (float)FilterVario * cfg.bar_lag);// Actual predicted hight
-                AutostartClimbrate = constrain((abs(AutostartTargetHight - tmp0) / 3), 10, (int16_t)cfg.as_clmbr);// Slow down when getting closer to target
+                AutostartClimbrate = constrain_int((abs(AutostartTargetHight - tmp0) / 3), 10, (int16_t)cfg.as_clmbr);// Slow down when getting closer to target
                 if (AutostartFilterAlt < AutostartTargetHight)
                 {
                     GetClimbrateTorcDataTHROTTLE(AutostartClimbrate);           // Climb
@@ -782,38 +782,27 @@ void loop(void)
         tmp0flt  = (uint16_t)FLOATcycleTime & (uint16_t)0xFFFC;                 // Filter last 2 bit jitter
         tmp0flt /= 3000.0f;
         //VERY DIRTY! IS ALREADY FIXED BUT NOT IN THIS UPLOAD BECAUSE DONE IN IMU PART THERE
-
-        if (cfg.rc_oldyw)                                                       // [0/1] 0 = multiwii 2.3 yaw, 1 = older yaw
+        tmp0  = ((int32_t)rcCommand[YAW] * (((int32_t)cfg.yawRate << 1) + 40)) >> 5;
+        error = tmp0 - SpecialIntegerRoundUp(gyroData[YAW] * 0.25f);          // Less Gyrojitter works actually better
+        errorGyroI_YW = constrain(errorGyroI_YW + (int32_t)(error * (float)cfg.I8[YAW] * tmp0flt), -268435454, +268435454);        
+        if(cfg.rc_dbyw)
         {
-            PTermYW      = ((int32_t)cfg.P8[YAW] * (100 - (int32_t)cfg.yawRate * (int32_t)abs(rcCommand[YAW]) / 500)) / 100;
-            tmp0         = SpecialIntegerRoundUp(gyroData[YAW] * 0.25f);
-            axisPID[YAW] = rcCommand[YAW] - tmp0 * PTermYW / 80;
-            if ((abs(tmp0) > 640) || (abs(rcCommand[YAW]) > 100))
-                errorGyroI_YW = 0;
-            else
-            {
-                error         = ((int32_t)rcCommand[YAW] * 80 / (int32_t)cfg.P8[YAW]) - tmp0;
-                errorGyroI_YW = constrain(errorGyroI_YW + (int32_t)(error * tmp0flt), -16000, +16000); // WindUp
-                axisPID[YAW] += (errorGyroI_YW / 125 * cfg.I8[YAW]) >> 6;              
-            }
+            if (rcCommand[YAW]) errorGyroI_YW = 0;
         }
         else
-       {
-            tmp0  = ((int32_t)rcCommand[YAW] * (((int32_t)cfg.yawRate << 1) + 40)) >> 5;
-            error = tmp0 - SpecialIntegerRoundUp(gyroData[YAW] * 0.25f);          // Less Gyrojitter works actually better
+        {
             if (abs(tmp0) > 50) errorGyroI_YW = 0;
-            else errorGyroI_YW = constrain(errorGyroI_YW + (int32_t)(error * (float)cfg.I8[YAW] * tmp0flt), -268435454, +268435454);
-            axisPID[YAW] = constrain(errorGyroI_YW >> 13, -250, +250);
-            PTermYW      = ((int32_t)error * (int32_t)cfg.P8[YAW]) >> 6;
-            if(NumberOfMotors > 3)                                              // Constrain YAW by D value if not servo driven in that case servolimits apply
-            {
-                tmp0 = 300;
-                if (cfg.D8[YAW]) tmp0 -= (int32_t)cfg.D8[YAW];
-                PTermYW = constrain(PTermYW, -tmp0, tmp0);
-            }
-            axisPID[YAW] += PTermYW;  
         }
-        axisPID[YAW] = SpecialIntegerRoundUp(axisPID[YAW]);                     // Round up result.
+        axisPID[YAW] = constrain(errorGyroI_YW >> 13, -250, +250);
+        PTermYW      = ((int32_t)error * (int32_t)cfg.P8[YAW]) >> 6;
+        if(NumberOfMotors > 3)                                              // Constrain YAW by D value if not servo driven in that case servolimits apply
+        {
+            tmp0 = 300;
+            if (cfg.D8[YAW]) tmp0 -= (int32_t)cfg.D8[YAW];
+            PTermYW = constrain(PTermYW, -tmp0, tmp0);
+        }
+        axisPID[YAW] += PTermYW;  
+
         if(f.GTUNE && f.ARMED) calculate_Gtune(false, YAW);
         
         if(f.HORIZON_MODE) prop = (float)min(max(abs(rcCommand[PITCH]), abs(rcCommand[ROLL])), 450) / 450.0f;
@@ -875,7 +864,7 @@ void loop(void)
                 tmp0flt          -= gyroData[axis];
                 PTerm             = (float)cfg.P8[axis] * tmp0flt * 0.002f;
                 errorGyroI[axis] += (float)cfg.I8[axis] * tmp0flt * ACCDeltaTimeINS;
-                errorGyroI[axis]  = constrain(errorGyroI[axis], -5500.0f, 5500.0f);// errorGyroI[axis]  = constrain(errorGyroI[axis], -17176.0f, 17176.0f);
+                errorGyroI[axis]  = constrain_flt(errorGyroI[axis], -5500.0f, 5500.0f);// errorGyroI[axis]  = constrain(errorGyroI[axis], -17176.0f, 17176.0f);
                 ITerm             = errorGyroI[axis] * 0.015f;
                 delta             = (tmp0flt - lastGyro[axis]) / ACCDeltaTimeINS;
                 lastGyro[axis]    = tmp0flt;
@@ -907,9 +896,8 @@ void loop(void)
         tmp0 = rcCommand[THROTTLE];                                             // Save Original THROTTLE
         if(f.ARMED && cfg.rc_flpsp && cfg.acc_calibrated && UpsideDown && !f.ANGLE_MODE) // Putting flipsupport here
             rcCommand[THROTTLE] = cfg.esc_min + ((rcCommand[THROTTLE] - cfg.esc_min) / ((int16_t)cfg.rc_flpsp + 1));// will make it possible in althold as well
-        mixTable();
+        mixTableAndWriteMotors();
         writeServos();
-        writeMotors();
         DoMotorStats(false);                                                    // False means no hoverthrottlegeneration for failsafe
         rcCommand[THROTTLE] = tmp0;                                             // Restore Original THROTTLE
     }
@@ -1140,6 +1128,16 @@ static float devVariance(stdev_t *dev)
 float devStandardDeviation(stdev_t *dev)
 {
     return sqrtf(devVariance(dev));
+}
+
+float constrain_flt(float amt, float low, float high)
+{
+    return constrain(amt, low, high);
+}
+
+int32_t constrain_int(int32_t amt, int32_t low, int32_t high)
+{
+    return constrain(amt, low, high);
 }
 
 /*
@@ -1391,9 +1389,9 @@ static void GetRCandAuxfromBuf(void)                                            
     }
     for (i = 0; i < MaxAuxNumber; i++)                                      // Even with no Aux capable TX (4CH) enable some fixed auxfunctions setable in GUI
     {
-        auxState |= (rcData[AUX1 + i] < 1300) << ++offs;
-        auxState |= (1300 < rcData[AUX1 + i] && rcData[AUX1 + i] < 1700) << ++offs;
-        auxState |= (rcData[AUX1 + i] > 1700) << ++offs;
+        auxState |= (uint32_t)(rcData[AUX1 + i] < 1300) << ++offs;
+        auxState |= (uint32_t)(1300 < rcData[AUX1 + i] && rcData[AUX1 + i] < 1700) << ++offs;
+        auxState |= (uint32_t)(rcData[AUX1 + i] > 1700) << ++offs;
     }
     for (i = 0; i < CHECKBOXITEMS; i++) rcOptions[i] = (auxState & cfg.activate[i]) > 0;
 }
