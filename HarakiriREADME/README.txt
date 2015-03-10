@@ -17,7 +17,8 @@ Naze32 Harakiri10 Summer Games pre2.6
 - Put Gyrosmoothing to floats
 - Deleted FEATURE_GYRO_SMOOTHING added gy_smrll, gy_smptc, gy_smyw instead. Now you can adjust gy_smyw for tricopter (see below).
 - Added MWII 2.3 Yaw algo, reworked "I" part.
-- Added older MWII 2.1 Yaw algo as selectable parameter rc_oldyw = [0/1] 0 = multiwii 2.3 yaw (default), 1 = older yaw
+- REMOVED "rc_oldyw = [0/1] 0 = multiwii 2.3 yaw (default), 1 = older yaw" Reason: the old yaw is obsolete
+- Note on Yaw PIDs: The "D" - part is a limiter to deal with Yaw-jumps. "D" = 0 no limit, increasing Yaw "D" increases the limit (reduces yaw-jumps)
 - Added Mhefnys's G-Tune in stripped down form. So there are new parameters. For further reference look in G-Tune.txt!
   gt_loP_rll  = 20 [10..200] Lower limit of ROLL P during G tune.  Note "20" means "2.0" in the gui.
   gt_loP_ptch = 20 [10..200] Lower limit of PITCH P during G tune. Note "20" means "2.0" in the gui.
