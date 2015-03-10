@@ -30,8 +30,8 @@ void ledringState(void)
     else if (state == 1)
     {
         b[0] = 'y';
-        b[1] = constrain((int16_t)angle[ROLL]  / 10 + 90, 0, 180);
-        b[2] = constrain((int16_t)angle[PITCH] / 10 + 90, 0, 180);
+        b[1] = constrain_int((int16_t)angle[ROLL]  / 10 + 90, 0, 180);
+        b[2] = constrain_int((int16_t)angle[PITCH] / 10 + 90, 0, 180);
         i2cWriteBuffer(LED_RING_ADDRESS, 0xFF, 3, b);
         state = 2;
     }
