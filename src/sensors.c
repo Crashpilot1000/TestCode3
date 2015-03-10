@@ -106,7 +106,7 @@ retry:
     if ( ack) ack = bmp085Detect(&baro);                          // Are we really dealing with BMP?
     if (!ack) ack = ms5611Detect(&baro);                          // No, Check for MS Baro
     if (ack) sensorsSet(SENSOR_BARO);
-    if(cfg.esc_nfly) ESCnoFlyThrottle = constrain(cfg.esc_nfly, cfg.esc_min, cfg.esc_max); // Set the ESC PWM signal threshold for not flyable RPM
+    if(cfg.esc_nfly) ESCnoFlyThrottle = constrain_int(cfg.esc_nfly, cfg.esc_min, cfg.esc_max); // Set the ESC PWM signal threshold for not flyable RPM
     else ESCnoFlyThrottle = cfg.esc_min + (((cfg.esc_max - cfg.esc_min) * 5) / 100); // If not configured, take 5% above esc_min
 #endif
 #ifdef SONAR
