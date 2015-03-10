@@ -21,7 +21,6 @@ static   float GyroScale16;
 
 static void GYRO_Common(void);
 static void Mag_Calibration(void);
-static void sphere_fit_least_squares(const float x[], const float y[], const float z[], uint16_t size, float *sphere);
 static void ACC_getRawRot(void);
 static void Gyro_getRawRot(void);
 static void Gyro_Calibrate(void);
@@ -523,166 +522,97 @@ static void Mag_Calibration(void)                                 // Called from
 #define MAGmaxcount      500                                      // Take 500 samples at 10Hz rate i.e 50Sec
 #define MAGerror       10000
 #define MAGdiscardcnt     50
-    float    x[MAGmaxcount], y[MAGmaxcount], z[MAGmaxcount], Temp[3];
-    uint16_t i, gathercnt = (uint16_t)cfg.mag_time * 5;
-    LD0_OFF();                                                    // Green LED OFF
-    LD1_ON();                                                     // Red LED ON
-    Mag_42Hz_AVG(Temp, MAGdiscardcnt);                            // Discard some
-    for (i = 0; i < MAGmaxcount; i++)                             // Gather up Mag Data. Freeze FC. Adjust Mag readout JUST by GAIN/SCALE
-    {
-        Mag_42Hz_AVG(Temp, gathercnt);
-        x[i] = Temp[0];
-        y[i] = Temp[1];
-        z[i] = Temp[2];
-        LED0_TOGGLE
-        LED1_TOGGLE
-    }
-    sphere_fit_least_squares(x, y, z, MAGmaxcount, cfg.magZero);
-    cfg.mag_calibrated = 1;
-    for (i = 0; i < 3; i++)
-    {
-        if (fabs(cfg.magZero[i]) > MAGerror)
-        {
-            cfg.mag_calibrated = 0;                               // Supress GPS functions & Guicrazymag
-            cfg.magZero[i] = 0;          
-        }
-    }
-    writeParams(1);                                               // Calibration done, save whatever result
-    systemReset(false);
-}
-#endif
-
-/****************************************************************************
- * Crashpilot note: Parameter slightly changed. Size to float.
- * PX4 "Copyright" removed since it is ripped off here:
- * http://imaginaryz.blogspot.de/2011/04/least-squares-fit-sphere-to-3d-data.html
- * PX4 Docu: https://pixhawk.ethz.ch/px4/docs/calibration__routines_8cpp.html
- ****************************************************************************/
-#define sflsdelta 0.0f
-#define maxiterations 100
-void sphere_fit_least_squares(const float x[], const float y[], const float z[], uint16_t size, float *sphere)
-{
-    uint16_t i, n;
-    float x_sumplain = 0.0f, x_sumsq = 0.0f, x_sumcube = 0.0f, y_sumplain = 0.0f, y_sumsq = 0.0f;
+#define sflsdelta         0.0f
+#define maxiterations    100
+    float xyz[3], x_sumplain = 0.0f, x_sumsq = 0.0f, x_sumcube = 0.0f, y_sumplain = 0.0f, y_sumsq = 0.0f;
     float y_sumcube = 0.0f, z_sumplain = 0.0f, z_sumsq = 0.0f, z_sumcube = 0.0f, xy_sum = 0.0f;
     float xz_sum = 0.0f, yz_sum = 0.0f, x2y_sum = 0.0f, x2z_sum = 0.0f, y2x_sum = 0.0f, y2z_sum = 0.0f;
     float z2x_sum = 0.0f, z2y_sum = 0.0f, x2, y2, z2, x_sum, x_sum2, x_sum3, y_sum, y_sum2, y_sum3, z_sum;
     float z_sum2, z_sum3, XY, XZ, YZ, X2Y, X2Z, Y2X, Y2Z, Z2X, Z2Y, F0, F1, F2, F3, F4, A, B, C, A2, B2;
-    float C2, QS, QB, Rsq, Q0, Q1, Q2, aA, aB, aC, nA, nB, nC, dA, dB, dC, fltsize = (float)size;
-
-    for (i = 0; i < size; i++)
+    float C2, QS, QB, Rsq, Q0, Q1, Q2, aA, aB, aC, nA, nB, nC, dA, dB, dC, fltsize = (float)MAGmaxcount;
+    uint16_t i, gathercnt = (uint16_t)cfg.mag_time * 5;
+    LD0_OFF();                                                    // Green LED OFF
+    LD1_ON();                                                     // Red LED ON
+    Mag_42Hz_AVG(xyz, MAGdiscardcnt);                             // Discard some
+    for (i = 0; i < MAGmaxcount; i++)                             // Gather up Mag Data. Freeze FC. Adjust Mag readout JUST by GAIN/SCALE
     {
-        x2          = x[i] * x[i];
-        y2          = y[i] * y[i];
-        z2          = z[i] * z[i];
-        x_sumplain += x[i];
+        Mag_42Hz_AVG(xyz, gathercnt);
+        x2          = xyz[0] * xyz[0];                            // http://imaginaryz.blogspot.de/2011/04/least-squares-fit-sphere-to-3d-data.html
+        y2          = xyz[1] * xyz[1];
+        z2          = xyz[2] * xyz[2];
+        x_sumplain += xyz[0];
         x_sumsq    += x2;
-        x_sumcube  += x2   * x[i];
-        y_sumplain += y[i];
+        x_sumcube  += x2     * xyz[0];
+        y_sumplain += xyz[1];
         y_sumsq    += y2;
-        y_sumcube  += y2   * y[i];
-        z_sumplain += z[i];
+        y_sumcube  += y2     * xyz[1];
+        z_sumplain += xyz[2];
         z_sumsq    += z2;
-        z_sumcube  += z2   * z[i];
-        xy_sum     += x[i] * y[i];
-        xz_sum     += x[i] * z[i];
-        yz_sum     += y[i] * z[i];
-        x2y_sum    += x2   * y[i];
-        x2z_sum    += x2   * z[i];
-        y2x_sum    += y2   * x[i];
-        y2z_sum    += y2   * z[i];
-        z2x_sum    += z2   * x[i];
-        z2y_sum    += z2   * y[i];
+        z_sumcube  += z2     * xyz[2];
+        xy_sum     += xyz[0] * xyz[1];
+        xz_sum     += xyz[0] * xyz[2];
+        yz_sum     += xyz[1] * xyz[2];
+        x2y_sum    += x2     * xyz[1];
+        x2z_sum    += x2     * xyz[2];
+        y2x_sum    += y2     * xyz[0];
+        y2z_sum    += y2     * xyz[2];
+        z2x_sum    += z2     * xyz[0];
+        z2y_sum    += z2     * xyz[1];
+        LED0_TOGGLE
+        LED1_TOGGLE
     }
-
-    //Least Squares Fit a sphere A,B,C with radius squared Rsq to 3D data
-    //
-    //    P is a structure that has been computed with the data earlier.
-    //    P.npoints is the number of elements; the length of X,Y,Z are identical.
-    //    P's members are logically named.
-    //
-    //    X[n] is the x component of point n
-    //    Y[n] is the y component of point n
-    //    Z[n] is the z component of point n
-    //
-    //    A is the x coordiante of the sphere
-    //    B is the y coordiante of the sphere
-    //    C is the z coordiante of the sphere
-    //    Rsq is the radius squared of the sphere.
-    //
-    //This method should converge; maybe 5-100 iterations or more.
-    //
-    x_sum  = x_sumplain / fltsize;    //sum( X[n] )
-    x_sum2 = x_sumsq    / fltsize;    //sum( X[n]^2 )
-    x_sum3 = x_sumcube  / fltsize;    //sum( X[n]^3 )
-    y_sum  = y_sumplain / fltsize;    //sum( Y[n] )
-    y_sum2 = y_sumsq    / fltsize;    //sum( Y[n]^2 )
-    y_sum3 = y_sumcube  / fltsize;    //sum( Y[n]^3 )
-    z_sum  = z_sumplain / fltsize;    //sum( Z[n] )
-    z_sum2 = z_sumsq    / fltsize;    //sum( Z[n]^2 )
-    z_sum3 = z_sumcube  / fltsize;    //sum( Z[n]^3 )
-    XY     = xy_sum     / fltsize;    //sum( X[n] * Y[n] )
-    XZ     = xz_sum     / fltsize;    //sum( X[n] * Z[n] )
-    YZ     = yz_sum     / fltsize;    //sum( Y[n] * Z[n] )
-    X2Y    = x2y_sum    / fltsize;    //sum( X[n]^2 * Y[n] )
-    X2Z    = x2z_sum    / fltsize;    //sum( X[n]^2 * Z[n] )
-    Y2X    = y2x_sum    / fltsize;    //sum( Y[n]^2 * X[n] )
-    Y2Z    = y2z_sum    / fltsize;    //sum( Y[n]^2 * Z[n] )
-    Z2X    = z2x_sum    / fltsize;    //sum( Z[n]^2 * X[n] )
-    Z2Y    = z2y_sum    / fltsize;    //sum( Z[n]^2 * Y[n] )
-
-    F0 =  x_sum2 + y_sum2 + z_sum2;    //Reduction of multiplications
-    F1 =  0.5f * F0;
-    F2 = -8.0f * (x_sum3 + Y2X + Z2X);
-    F3 = -8.0f * (X2Y + y_sum3 + Z2Y);
-    F4 = -8.0f * (X2Z + Y2Z + z_sum3);
-
-    //Set initial conditions:
-    A = x_sum;
-    B = y_sum;
-    C = z_sum;
-
-    //First iteration computation:
-    A2 = A * A;
-    B2 = B * B;
-    C2 = C * C;
-    QS = A2 + B2 + C2;
-    QB = -2.0f * (A * x_sum + B * y_sum + C * z_sum);
-
-    //Set initial conditions:
-    Rsq = F0 + QB + QS;
-
-    //First iteration computation:
-    Q0 = 0.5f * (QS - Rsq);
-    Q1 = F1 + Q0;
-    Q2 = 8.0f * (QS - Rsq + QB + F0);
-
-    //Iterate N times, ignore stop condition.
-    n = 0;
-    while (n < maxiterations)
+    x_sum  = x_sumplain / fltsize;
+    x_sum2 = x_sumsq    / fltsize;
+    x_sum3 = x_sumcube  / fltsize;
+    y_sum  = y_sumplain / fltsize;
+    y_sum2 = y_sumsq    / fltsize;
+    y_sum3 = y_sumcube  / fltsize;
+    z_sum  = z_sumplain / fltsize;
+    z_sum2 = z_sumsq    / fltsize;
+    z_sum3 = z_sumcube  / fltsize;
+    XY     = xy_sum     / fltsize;
+    XZ     = xz_sum     / fltsize;
+    YZ     = yz_sum     / fltsize;
+    X2Y    = x2y_sum    / fltsize;
+    X2Z    = x2z_sum    / fltsize;
+    Y2X    = y2x_sum    / fltsize;
+    Y2Z    = y2z_sum    / fltsize;
+    Z2X    = z2x_sum    / fltsize;
+    Z2Y    = z2y_sum    / fltsize;
+    F0     =  x_sum2 + y_sum2 + z_sum2;
+    F1     =  0.5f * F0;
+    F2     = -8.0f * (x_sum3 + Y2X + Z2X);
+    F3     = -8.0f * (X2Y + y_sum3 + Z2Y);
+    F4     = -8.0f * (X2Z + Y2Z + z_sum3);
+    A      = x_sum;
+    B      = y_sum;
+    C      = z_sum;
+    A2     = A * A;
+    B2     = B * B;
+    C2     = C * C;
+    QS     = A2 + B2 + C2;
+    QB     = -2.0f * QS;
+    Rsq    = F0 + QB + QS;
+    Q0     = 0.5f * (QS - Rsq);
+    Q1     = F1 + Q0;
+    Q2     = 8.0f * (QS - Rsq + QB + F0);
+    i      = 0;
+    while (i < maxiterations)
     {
-        n++;
-        //Compute denominator:
-        aA = Q2 + 16.0f * (A2 - 2.0f * A * x_sum + x_sum2);
-        aB = Q2 + 16.0f * (B2 - 2.0f * B * y_sum + y_sum2);
-        aC = Q2 + 16.0f * (C2 - 2.0f * C * z_sum + z_sum2);
-        aA = (aA == 0.0f) ? 1.0f : aA;
-        aB = (aB == 0.0f) ? 1.0f : aB;
-        aC = (aC == 0.0f) ? 1.0f : aC;
-
-        //Compute next iteration
-        nA = A - ((F2 + 16.0f * (B * XY + C * XZ + x_sum * (-A2 - Q0) + A * (x_sum2 + Q1 - C * z_sum - B * y_sum))) / aA);
-        nB = B - ((F3 + 16.0f * (A * XY + C * YZ + y_sum * (-B2 - Q0) + B * (y_sum2 + Q1 - A * x_sum - C * z_sum))) / aB);
-        nC = C - ((F4 + 16.0f * (A * XZ + B * YZ + z_sum * (-C2 - Q0) + C * (z_sum2 + Q1 - A * x_sum - B * y_sum))) / aC);
-
-        //Check for stop condition
-        dA = (nA - A);
-        dB = (nB - B);
-        dC = (nC - C);
-
+        i++;
+        aA  = Q2 + 16.0f * (A2 - 2.0f * A * x_sum + x_sum2);
+        aB  = Q2 + 16.0f * (B2 - 2.0f * B * y_sum + y_sum2);
+        aC  = Q2 + 16.0f * (C2 - 2.0f * C * z_sum + z_sum2);
+        aA  = (aA == 0.0f) ? 1.0f : aA;
+        aB  = (aB == 0.0f) ? 1.0f : aB;
+        aC  = (aC == 0.0f) ? 1.0f : aC;
+        nA  = A - ((F2 + 16.0f * (B * XY + C * XZ + x_sum * (-A2 - Q0) + A * (x_sum2 + Q1 - C * z_sum - B * y_sum))) / aA);
+        nB  = B - ((F3 + 16.0f * (A * XY + C * YZ + y_sum * (-B2 - Q0) + B * (y_sum2 + Q1 - A * x_sum - C * z_sum))) / aB);
+        nC  = C - ((F4 + 16.0f * (A * XZ + B * YZ + z_sum * (-C2 - Q0) + C * (z_sum2 + Q1 - A * x_sum - B * y_sum))) / aC);
+        dA  = (nA - A);
+        dB  = (nB - B);
+        dC  = (nC - C);
         if ((dA * dA + dB * dB + dC * dC) <= sflsdelta) break;
-
-        //Compute next iteration's values
         A   = nA;
         B   = nB;
         C   = nC;
@@ -696,7 +626,19 @@ void sphere_fit_least_squares(const float x[], const float y[], const float z[],
         Q1  = F1 + Q0;
         Q2  = 8.0f * (QS - Rsq + QB + F0);
     }
-    sphere[0] = A;
-    sphere[1] = B;
-    sphere[2] = C;
+    cfg.magZero[0] = A;
+    cfg.magZero[1] = B;
+    cfg.magZero[2] = C;
+    cfg.mag_calibrated = 1;
+    for (i = 0; i < 3; i++)
+    {
+        if (fabs(cfg.magZero[i]) > MAGerror)
+        {
+            cfg.mag_calibrated = 0;                               // Supress GPS functions & Guicrazymag
+            cfg.magZero[i] = 0;          
+        }
+    }
+    writeParams(1);                                               // Calibration done, save whatever result
+    systemReset(false);
 }
+#endif
