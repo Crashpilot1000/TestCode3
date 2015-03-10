@@ -320,7 +320,6 @@ typedef struct config_t
     uint16_t rc_killt;                      // Time in ms when your arm switch becomes a Killswitch, 0 disables
     uint8_t  rc_flpsp;                      // [0-1] When enabled(1) and upside down in acro or horizon mode only half throttle is applied
     uint8_t  rc_motor;                      // [0-2] Behaviour when thr < rc_minchk: 0= minthrottle no regulation, 1= minthrottle&regulation, 2= Motorstop 
-    uint8_t  rc_oldyw;                      // [0/1] 0 = multiwii 2.3 yaw, 1 = older yaw
 
     // G-tune related configuration
     uint8_t  gt_lolimP[3];                  // [10..200] Lower limit of P during G tune
@@ -616,6 +615,8 @@ void     devClear(stdev_t *dev);
 void     devPush(stdev_t *dev, float x);
 float    devStandardDeviation(stdev_t *dev);
 int32_t  SpecialIntegerRoundUp(float val);
+float    constrain_flt(float amt, float low, float high);
+int32_t  constrain_int(int32_t amt, int32_t low, int32_t high);
 
 // IMU
 void     imuInit(void);
@@ -641,9 +642,8 @@ void     GETMPU6050(void);
 void     mixerInit(void);
 void     mixerLoadMix(int index);
 void     writeServos(void);
-void     writeMotors(void);
 void     writeAllMotors(int16_t mc);
-void     mixTable(void);
+void     mixTableAndWriteMotors(void);
 
 // Serial Mwii & CLI & Mavlink
 void     serialInit(uint32_t baudrate);
