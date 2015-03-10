@@ -474,17 +474,11 @@ void serialCom(bool singlestep)                                                 
         Currentprotocol = PROTOCOL_AUTOSENSE;                                       // Set Protocol to unknown after 4 Sek of garbage or no inputdata
     }
 
-    switch(Currentprotocol)
+    if((Currentprotocol == PROTOCOL_MAVLINK) || (Currentprotocol == PROTOCOL_AUTOSENSE))
     {
-    case PROTOCOL_MAVLINK:
-        baseflight_mavlink_send_updates();                                          // Sends Heartbeat as well
-        break;
-    case PROTOCOL_AUTOSENSE:
-        baseflight_mavlink_send_1Hzheartbeat();                                     // It will time itself so no doubleheartbeat from sendupdates are here
-    default:                                                                        // Mwii not specially done here because it just sends when asked to (see below)
-        break;
+        baseflight_mavlink_send_updates();                                          // It will Heartbeat and mavlink around some data
     }
-  
+
     while (uartAvailable() && !Skipnow)
     {
         c = uartRead();
