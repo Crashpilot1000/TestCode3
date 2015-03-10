@@ -12,14 +12,7 @@
 #define MAVLINK_NUM_HEADER_BYTES (MAVLINK_CORE_HEADER_LEN + 1) ///< Length of all header bytes, including core and checksum
 #define MAVLINK_NUM_CHECKSUM_BYTES 2
 #define MAVLINK_NUM_NON_PAYLOAD_BYTES (MAVLINK_NUM_HEADER_BYTES + MAVLINK_NUM_CHECKSUM_BYTES)
-
 #define MAVLINK_MAX_PACKET_LEN (MAVLINK_MAX_PAYLOAD_LEN + MAVLINK_NUM_NON_PAYLOAD_BYTES) ///< Maximum packet length
-
-#define MAVLINK_MSG_ID_EXTENDED_MESSAGE 255
-#define MAVLINK_EXTENDED_HEADER_LEN 14
-// #define MAVLINK_MAX_EXTENDED_PACKET_LEN 2048
-#define MAVLINK_MAX_EXTENDED_PACKET_LEN 1024
-#define MAVLINK_MAX_EXTENDED_PAYLOAD_LEN (MAVLINK_MAX_EXTENDED_PACKET_LEN - MAVLINK_EXTENDED_HEADER_LEN - MAVLINK_NUM_NON_PAYLOAD_BYTES)
 
 typedef struct param_union {
 	union {
@@ -52,14 +45,6 @@ typedef struct __mavlink_message {
 	uint64_t payload64[(MAVLINK_MAX_PAYLOAD_LEN+MAVLINK_NUM_CHECKSUM_BYTES+7)/8];
 } mavlink_message_t;
 
-
-typedef struct __mavlink_extended_message {
-       mavlink_message_t base_msg;
-       int32_t extended_payload_len;   ///< Length of extended payload if any
-       uint8_t extended_payload[MAVLINK_MAX_EXTENDED_PAYLOAD_LEN];
-} mavlink_extended_message_t;
-
-
 typedef enum {
 	MAVLINK_TYPE_CHAR     = 0,
 	MAVLINK_TYPE_UINT8_T  = 1,
@@ -74,25 +59,6 @@ typedef enum {
 	MAVLINK_TYPE_DOUBLE   = 10
 } mavlink_message_type_t;
 
-#define MAVLINK_MAX_FIELDS 1
-
-typedef struct __mavlink_field_info {
-        const char *name;                 // name of this field
-        const char *print_format;         // printing format hint, or NULL
-        mavlink_message_type_t type;      // type of this field
-        unsigned int array_length;        // if non-zero, field is an array
-        unsigned int wire_offset;         // offset of each field in the payload
-        unsigned int structure_offset;    // offset in a C structure
-} mavlink_field_info_t;
-
-// note that in this structure the order of fields is the order
-// in the XML file, not necessary the wire order
-typedef struct __mavlink_message_info {
-	const char *name;                                      // name of the message
-	unsigned num_fields;                                   // how many fields in this message
-	mavlink_field_info_t fields[MAVLINK_MAX_FIELDS];       // field information
-} mavlink_message_info_t;
-
 #define _MAV_PAYLOAD(msg) ((const char *)(&((msg)->payload64[0])))
 #define _MAV_PAYLOAD_NON_CONST(msg) ((char *)(&((msg)->payload64[0])))
 
@@ -106,13 +72,6 @@ typedef enum {
     MAVLINK_COMM_2,
     MAVLINK_COMM_3
 } mavlink_channel_t;
-
-/*
- * applications can set MAVLINK_COMM_NUM_BUFFERS to the maximum number
- * of buffers they will use. If more are used, then the result will be
- * a stack overrun
- */
-# define MAVLINK_COMM_NUM_BUFFERS 1
 
 typedef enum {
     MAVLINK_PARSE_STATE_UNINIT=0,
@@ -142,4 +101,4 @@ typedef struct __mavlink_status {
 #define MAVLINK_BIG_ENDIAN 0
 #define MAVLINK_LITTLE_ENDIAN 1
 
-#endif /* MAVLINK_TYPES_H_ */
+#endif /* MAVLINK_TYPES_H_ */ 
