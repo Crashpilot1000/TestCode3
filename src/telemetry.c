@@ -248,14 +248,14 @@ void sendFRSKYTelemetry(void)
         sendAccel();                                // Sent every 125ms
         sendTelemetryTail();
 
-        if ((cycleNum % 4) == 0)                    // Sent every 500ms
+        if (!(cycleNum % 4))                        // Sent every 500ms
         {
             sendBaro();
             sendHeading();
             sendTelemetryTail();
         }
 
-        if ((cycleNum % 8) == 0)                    // Sent every 1s
+        if (!(cycleNum % 8))                        // Sent every 1s
         {
             sendTemperature1();
             if (feature(FEATURE_VBAT))
