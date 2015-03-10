@@ -1,7 +1,7 @@
 #include "board.h"
 #include "mw.h"
 #include "baseflight_mavlink.h"
-#define  WPrxtxTO 500                                 // 500ms timeout for wp request/sending packet flow
+#define  WPrxtxTO 500                                            // 500ms timeout for wp request/sending packet flow
 
 static bool mavlink_send_paralist;
 static uint16_t ExpectedTotalIncomingWP, ActualExpectedWpIDX, ActualWPFloppyWriteIDX;
@@ -14,7 +14,7 @@ static uint8_t  CompIDOfPartner;
 
 void baseflight_mavlink_init(void)
 {
-    switch(cfg.mixerConfiguration)                    // Set system_type here
+    switch(cfg.mixerConfiguration)                               // Set system_type here
     {
     case MULTITYPE_TRI:
         system_type = MAV_TYPE_TRICOPTER;
@@ -59,13 +59,13 @@ void baseflight_mavlink_init(void)
     if (sensors(SENSOR_MAG))  ControlAndSensorsPresent |=  4100;
     if (sensors(SENSOR_BARO)) ControlAndSensorsPresent |=  8200;
     if (sensors(SENSOR_GPS))  ControlAndSensorsPresent |= 16416;
-    Currentprotocol = PROTOCOL_AUTOSENSE;                     // Set primary Protocol to unknown/autosensing
+    Currentprotocol = PROTOCOL_AUTOSENSE;                        // Set primary Protocol to unknown/autosensing
     reset_mavlink();
 }
 
 void reset_mavlink(void)
 {
-    baseflight_mavlink_send_paramlist(true);                             // Reset parameterlist sending also enables AllowProtocolAutosense
+    baseflight_mavlink_send_paramlist(true);                     // Reset parameterlist sending && allow Autosensing
     AllowWPrx                   = false;
     AllowWPtx                   = false;
     ROIdefined                  = false;
@@ -78,10 +78,10 @@ void reset_mavlink(void)
 static void RxMissionACKandResetML(uint8_t acktype)
 {
     mavlink_message_t m;
-    if (ScheduleEEPROMwriteMS && acktype != MAV_MISSION_ACCEPTED)       // Error and a faulty writeaction is scheduled
+    if (ScheduleEEPROMwriteMS && acktype != MAV_MISSION_ACCEPTED) // Error and a faulty writeaction is scheduled
     {
-        ScheduleEEPROMwriteMS = 0;                                      // Abort planned saving
-        readEEPROM();                                                   // Reload already stored stuff
+        ScheduleEEPROMwriteMS = 0;                               // Abort planned saving
+        readEEPROM();                                            // Reload already stored stuff
     }
     mavlink_msg_mission_ack_pack(MLSystemID, MLComponentID, &m, SysIDOfPartner, CompIDOfPartner, acktype);
     baseflight_mavlink_send_message(&m);  
@@ -109,7 +109,7 @@ static void RxMissionACKandResetML(uint8_t acktype)
 
 static void CheckWPrxtxTimeouts(void)
 {
-    if (!AllowWPrx && !AllowWPtx) return;                                // Skip to keep exec. time low
+    if (!AllowWPrx && !AllowWPtx) return;                        // Skip to keep exec. time low
     if (((millis() - TimeStampMSlastWPtxrxAction) > WPrxtxTO) || (AllowWPrx && AllowWPtx)) reset_mavlink();
 }
 
@@ -125,33 +125,7 @@ static void ClearDataset(wp_t *wipe)
     for (i = 0; i < sizeof(wp_t); i++) (*wipe).bytes[i] = 0;
 }
 
-bool baseflight_mavlink_send_1Hzheartbeat(void)                          // That mother is running at 1Hz and schedules/collects eeprom writes
-{
-    mavlink_message_t msg2;
-    static uint32_t   LastHeartbeat;
-    uint8_t           autopilot_type = MAV_AUTOPILOT_ARDUPILOTMEGA;      // uint8_t autopilot_type = MAV_AUTOPILOT_GENERIC;
-	  uint8_t           system_mode    = 0;                                // Is set below
-	  uint32_t          custom_mode    = 0;
-	  uint8_t           system_state   = MAV_STATE_STANDBY;
-
-    CheckWPrxtxTimeouts();                                               // Check for disconnects during WP stuff
-    if ((currentTimeMS - LastHeartbeat) < 1000) return false;
-    LastHeartbeat = currentTimeMS;
-
-//  Set this here if Automission: MAV_MODE_STABILIZE_DISARMED
-    if (f.ANGLE_MODE || f.HORIZON_MODE) system_mode = MAV_MODE_STABILIZE_DISARMED;
-     else system_mode = MAV_MODE_MANUAL_DISARMED;
-    if(f.ARMED)
-    {
-        system_mode |= 128;                                              // Set the Armed bit here if necessary
-        system_state = MAV_STATE_ACTIVE;
-    }
-    mavlink_msg_heartbeat_pack(MLSystemID, MLComponentID, &msg2, system_type, autopilot_type, system_mode, custom_mode, system_state);
-    baseflight_mavlink_send_message(&msg2);
-    return true;
-}
-
-void baseflight_mavlink_send_message(mavlink_message_t* msg)
+void baseflight_mavlink_send_message(mavlink_message_t *msg)
 {
     uint8_t  buf[MAVLINK_MAX_PACKET_LEN];
 	  uint16_t len = mavlink_msg_to_send_buffer(buf, msg);
@@ -182,22 +156,30 @@ void baseflight_mavlink_handleMessage(mavlink_message_t *msg)
 		case MAVLINK_MSG_ID_PARAM_REQUEST_LIST:
         if (!mavlink_send_paralist)
         {
-            baseflight_mavlink_send_paramlist(true);           // Just reset function to send from the beginning
-            mavlink_send_paralist = true;                      // Only initiate paralist send here, and not already sending
+            baseflight_mavlink_send_paramlist(true);             // Just reset function to send from the beginning
+            mavlink_send_paralist = true;                        // Only initiate paralist send here, and not already sending
         }
 			  break;
 
-    case MAVLINK_MSG_ID_MISSION_REQUEST_LIST:                  // Prepare sending WP to GCS
+		case MAVLINK_MSG_ID_PARAM_SET:
+        {
+            mavlink_param_set_t packet;
+			      mavlink_msg_param_set_decode(msg, &packet);
+            if(baseflight_mavlink_set_param(&packet)) ScheduleEEPROMwriteMS = currentTimeMS + 500; // Collect some EEPROMWRITES BEFORE ACTUALLY DOING IT
+      	    break;
+        }
+
+    case MAVLINK_MSG_ID_MISSION_REQUEST_LIST:                    // Prepare sending WP to GCS
         CheckWPrxtxTimeouts();
         if (!IniOfWPrxtxPossible() || !cfg.FDUsedDatasets) break;
         AllowWPtx = true;
-        AllowProtocolAutosense = false;                        // Disable Protocolswitching
+        AllowProtocolAutosense = false;                          // Disable Protocolswitching
         mavlink_msg_mission_count_pack(MLSystemID, MLComponentID, &msg2, SysIDOfPartner, CompIDOfPartner, cfg.FDUsedDatasets);
         baseflight_mavlink_send_message(&msg2);
         TimeStampMSlastWPtxrxAction = currentTimeMS;
         break;
         
-    case MAVLINK_MSG_ID_MISSION_REQUEST:                       // Sending Data to gui
+    case MAVLINK_MSG_ID_MISSION_REQUEST:                         // Sending Data to gui
     {
         mavlink_mission_request_t packet;
         wp_t                      wantedWP;
@@ -212,11 +194,11 @@ void baseflight_mavlink_handleMessage(mavlink_message_t *msg)
         x      = (float)wantedWP.WPGPS[LAT] / 1.0e7f;
         y      = (float)wantedWP.WPGPS[LON] / 1.0e7f;
         z      = (float)wantedWP.WPHight;
-        param1 = wantedWP.WPTime;                             // Always prefeed some paras here, they will be zero anyway if not needed, or corrected below
+        param1 = wantedWP.WPTime;                                // Always prefeed some paras here, they will be zero anyway if not needed, or corrected below
         param2 = wantedWP.WPPara1;
         param4 = wantedWP.WPHead;
 
-        switch(wantedWP.WPCMD)                                // Note: Unknown command not possible sorted out on write
+        switch(wantedWP.WPCMD)                                   // Note: Unknown command not possible sorted out on write
         {
         case ML_NAV_WAYPOINT:
             MLcmd  = MAV_CMD_NAV_WAYPOINT;
@@ -315,7 +297,7 @@ void baseflight_mavlink_handleMessage(mavlink_message_t *msg)
         
   			if ((packet.seq > Limit)) TerminateWithFaultyMission = true; // Error, out of bounds
 
-        if (packet.seq != ActualExpectedWpIDX)                    // Do we get what we want?
+        if (packet.seq != ActualExpectedWpIDX)                   // Do we get what we want?
         {
             RxMissionACKandResetML(MAV_MISSION_INVALID_SEQUENCE);
             break;
@@ -324,13 +306,13 @@ void baseflight_mavlink_handleMessage(mavlink_message_t *msg)
         ClearDataset(&actualWP);
         actualWP.WPGPS[LAT] = (int32_t)(packet.x * 1.0e7f);
         actualWP.WPGPS[LON] = (int32_t)(packet.y * 1.0e7f);
-        actualWP.WPHight    = (int16_t)constrain(packet.z, -32767, 32767); // In meter
+        actualWP.WPHight    = (int16_t)constrain_int(packet.z, -32767, 32767); // In meter
         if(!actualWP.WPHight) actualWP.WPHight = 2;              // Ensure a minimal missionhight of 2m AGL
 
         switch (packet.command)                                  // Get command here translated to our command set (currently somehow the same... BUT only a byte not a word..)
         {
         case MAV_CMD_NAV_WAYPOINT:                               // Unused: param3
-            actualWP.WPTime  = (uint8_t)constrain(packet.param1, 0, 1); // 1 signalize slow turn wp, 0 signalize fast corner
+            actualWP.WPTime  = (uint8_t)constrain_int(packet.param1, 0, 1); // 1 signalize slow turn wp, 0 signalize fast corner
             CheckHeadingROI  = true;
             CheckHitRadius   = true;
             CheckIfGPSCoordsAreValid = true;
@@ -355,7 +337,7 @@ void baseflight_mavlink_handleMessage(mavlink_message_t *msg)
             break;
 
         case MAV_CMD_NAV_LOITER_TURNS:                           // Unused: param3,param4
-            actualWP.WPPara2 = (int8_t)constrain(packet.param1, -127, 127); // Number of Turns at least one Turn, otherwise it's pointless
+            actualWP.WPPara2 = (int8_t)constrain_int(packet.param1, -127, 127); // Number of Turns at least one Turn, otherwise it's pointless
             if(!actualWP.WPPara2) actualWP.WPPara2 = 1;          // Ensure at least one cw turn.
             CheckHitRadius   = true;
             CheckIfGPSCoordsAreValid = true;
@@ -363,7 +345,7 @@ void baseflight_mavlink_handleMessage(mavlink_message_t *msg)
             break;
 
         case MAV_CMD_NAV_LOITER_TIME:                            // Unused: param3,param4
-            actualWP.WPTime  = (uint8_t)constrain(packet.param1, 1, 255); // At least one second
+            actualWP.WPTime  = (uint8_t)constrain_int(packet.param1, 1, 255); // At least one second
             CheckHeadingROI  = true;
             CheckHitRadius   = true;
             CheckIfGPSCoordsAreValid = true;
@@ -387,7 +369,7 @@ void baseflight_mavlink_handleMessage(mavlink_message_t *msg)
             if (packet.seq != 1) TerminateWithFaultyMission = true;// Must be first item (besides "homepoint") and can not be the last command
             TerminateWhenStandAloneCommandInList = true;         // Command can not exist alone
             actualWP.WPGPS[LAT] = actualWP.WPGPS[LON] = 0;       // Use current postition but use defined hight
-            actualWP.WPHight = constrain(actualWP.WPHight, 2, 255);// Constrain to reasonable values and rule out negative values
+            actualWP.WPHight = constrain_int(actualWP.WPHight, 2, 255);// Constrain to reasonable values and rule out negative values
             MYcmd = ML_NAV_TAKEOFF;
             break;
 
@@ -410,13 +392,13 @@ void baseflight_mavlink_handleMessage(mavlink_message_t *msg)
 
         if (CheckHeadingROI)
         {
-            actualWP.WPHead = (int16_t)constrain(packet.param4, 0, 1); // Read out param4 into "Heading"
+            actualWP.WPHead = (int16_t)constrain_int(packet.param4, 0, 1); // Read out param4 into "Heading"
             if(actualWP.WPHead && !ROIdefined) actualWP.WPHead = 0;// Don't use ROI if no ROI was defined
         }
 
         if (CheckHitRadius)
         {
-            actualWP.WPPara1 = (uint8_t)constrain(packet.param2, cfg.gps_wp_radius / 100, 255); // Hitradius in m can not be smaller than preset
+            actualWP.WPPara1 = (uint8_t)constrain_int(packet.param2, cfg.gps_wp_radius / 100, 255); // Hitradius in m can not be smaller than preset
         }
 
         if(!FloppyWriteWP(&ActualWPFloppyWriteIDX, &actualWP))   // Bail Out! This error should never happen here ..
@@ -455,117 +437,111 @@ void baseflight_mavlink_handleMessage(mavlink_message_t *msg)
         TimeStampMSlastWPtxrxAction = currentTimeMS;
         break;
     }
-    
-    case MAVLINK_MSG_ID_PARAM_REQUEST_READ:
-        {
-            mavlink_param_request_read_t packet;
-            mavlink_msg_param_request_read_decode(msg, &packet);
-            baseflight_mavlink_send_singleparam(packet.param_index);
-            break;
-        }
-		case MAVLINK_MSG_ID_PARAM_SET:
-        {
-            mavlink_param_set_t packet;
-			      mavlink_msg_param_set_decode(msg, &packet);
-            if(baseflight_mavlink_set_param(&packet)) ScheduleEEPROMwriteMS = currentTimeMS + 500; // Collect some EEPROMWRITES BEFORE ACTUALLY DOING IT
-      	    break;
-        }
 		default:
 			  break;
     }
 }
 
-void baseflight_mavlink_send_updates(void)                                      // That's a bad mother here :)
+void baseflight_mavlink_send_updates(void)                                      // CHECK WITH GCS FOR REAL DATARATES
 {
     static uint32_t   Timer100Hz;
-    static uint8_t    HudPackCnt, AttiPackCnt, GPSPackCnt, RCPackCnt, ParaLstCnt, StatuspackCnt, PressPackCnt;
-    uint16_t          voltage = 0;
+    static uint16_t   cycleCNT = 0;
+    int16_t           tmp = 0;
     mavlink_message_t msg2;
-    bool              PacketSent;                                               // Avoid too much stuff in one Action
-    int16_t           tmp1;
 
-//  NOTE: THE HZ NUMBERS ARE WISHFUL THINKING, BECAUSE IT IS ENSURED THAT ONLY ONE PACKET IS SENT PER RUN
-//  SO THE ACTUAL HZ WILL DEGRADE, CHECK WITH GCS FOR REAL DATARATES
-    PacketSent = baseflight_mavlink_send_1Hzheartbeat();                        // Does internal 1Hz Timer returns true when done
-    if ((currentTime - Timer100Hz) >= 10000)                                    // 100Hz Timebase for mavlink because it's slow anyways
+    CheckWPrxtxTimeouts();                                                      // Check for disconnects during WP stuff
+    if ((currentTime - Timer100Hz) >= 10000)                                    // 10ms / 100Hz Timebase for mavlink because it's slow anyways
 	  {
         Timer100Hz = currentTime;
+        cycleCNT++;                                                             // Roll over like a boss
 
-        if (++PressPackCnt >= 200 && !PacketSent && sensors(SENSOR_BARO))       // 0.5Hz for Pressure Pack
+        if (!(cycleCNT % 199) && sensors(SENSOR_BARO) && !(Currentprotocol == PROTOCOL_AUTOSENSE)) // every 1990ms (0.503Hz) for Pressure Pack except during Autosensing
         {
-            PressPackCnt = 0;
-            PacketSent   = true;
             mavlink_msg_scaled_pressure_pack(
                 MLSystemID, MLComponentID, &msg2, currentTimeMS, ActualPressure * 0.01f, 0, telemTemperature1 * 100);
             baseflight_mavlink_send_message(&msg2);
+            return;
         }
-
-        if (++RCPackCnt >= 47 && !PacketSent)                                   // 2Hz for RC
+        
+        if (!(cycleCNT % 101))                                                  // every 1010ms (0.99Hz) for Heartbeat
         {
-            RCPackCnt  = 0;
-            PacketSent = true;
-            mavlink_msg_rc_channels_raw_pack(
-                MLSystemID , MLComponentID, &msg2, currentTimeMS, 0, rcData[0], rcData[1], rcData[3],
-                rcData[2], rcData[4], rcData[5], rcData[6], rcData[7], rssi);
+            uint8_t  autopilot_type = MAV_AUTOPILOT_ARDUPILOTMEGA;              // uint8_t autopilot_type = MAV_AUTOPILOT_GENERIC;
+            uint8_t  system_mode    = 0;                                        // Is set below
+            uint32_t custom_mode    = 0;
+            uint8_t  system_state   = MAV_STATE_STANDBY;
+
+            if (f.ANGLE_MODE || f.HORIZON_MODE) system_mode = MAV_MODE_STABILIZE_DISARMED; // Set this here if Automission: MAV_MODE_STABILIZE_DISARMED
+            else system_mode = MAV_MODE_MANUAL_DISARMED;
+            if(f.ARMED)
+            {
+                system_mode |= 128;                                              // Set the Armed bit here if necessary
+                system_state = MAV_STATE_ACTIVE;
+            }
+            mavlink_msg_heartbeat_pack(MLSystemID, MLComponentID, &msg2, system_type, autopilot_type, system_mode, custom_mode, system_state);
             baseflight_mavlink_send_message(&msg2);
+            return;
         }
-
-        if (++StatuspackCnt >= 48 && !PacketSent)                               // 2Hz for Status
+        
+        if(Currentprotocol == PROTOCOL_AUTOSENSE) return;                       // Stop here if we are just in Autosensing
+        
+        if (!(cycleCNT % 53))                                                   // every 530ms (1.89Hz) for Status
         {
-            StatuspackCnt = 0;
-            PacketSent    = true;
+            uint16_t voltage = 0;
             if (FEATURE_VBAT) voltage = (uint16_t)vbat * 100;                   // in mV
             mavlink_msg_sys_status_pack(
                 MLSystemID, MLComponentID, &msg2, ControlAndSensorsPresent, ControlAndSensorsPresent,
                 ControlAndSensorsPresent & 1023, 0, voltage, -1, -1, 0, 0, 0, 0, 0, 0);
             baseflight_mavlink_send_message(&msg2);
+            return;
         }
 
-        if (++GPSPackCnt >= 49 && !PacketSent && sensors(SENSOR_GPS))           // 2Hz for GPS
+        if (!(cycleCNT % 47) && sensors(SENSOR_GPS))                            // every 470ms (2.13Hz) for GPS
         {
-            GPSPackCnt = 0;
-            PacketSent = true;
-            if (GPS_FIX) tmp1 = 3;                                              // Report 3Dfix if any fix
-             else tmp1 = 0;
+            if (GPS_FIX) tmp = 3;                                               // Report 3Dfix if any fix
 	          mavlink_msg_gps_raw_int_pack(
-                MLSystemID , MLComponentID, &msg2, currentTime, (uint8_t)tmp1, Real_GPS_coord[LAT], Real_GPS_coord[LON], GPS_altitude * 1000,
+                MLSystemID , MLComponentID, &msg2, currentTime, (uint8_t)tmp, Real_GPS_coord[LAT], Real_GPS_coord[LON], GPS_altitude * 1000,
                 65535, 65535, GPS_speed, constrain(GPS_ground_course * 10, 0, 35999), GPS_numSat);
             baseflight_mavlink_send_message(&msg2);
+            return;
         }
-        
-        if (++HudPackCnt >= 10 && !PacketSent)                                  // 10Hz for HUD
+
+        if (!(cycleCNT % 43))                                                   // every 430ms (2.33Hz) for RC
         {
-            HudPackCnt = 0;
-            PacketSent = true;
+            mavlink_msg_rc_channels_raw_pack(
+                MLSystemID , MLComponentID, &msg2, currentTimeMS, 0, rcData[0], rcData[1], rcData[3],
+                rcData[2], rcData[4], rcData[5], rcData[6], rcData[7], rssi);
+            baseflight_mavlink_send_message(&msg2);
+            return;
+        }
+
+        if (!(cycleCNT % 11))                                                   // every 110ms (9.1Hz) for HUD
+        {
             if (sensors(SENSOR_MAG))
             {
-                tmp1 = heading;
-                if (tmp1 < 0) tmp1 += 360;                                      // heading in degrees, in compass units (0..360, 0=north)
-            }else tmp1 = 0;
+                tmp = heading;
+                if (tmp < 0) tmp += 360;                                        // heading in degrees, in compass units (0..360, 0=north)
+            }
             mavlink_msg_vfr_hud_pack(
-                MLSystemID, MLComponentID, &msg2, 0, (float)GPS_speed * 0.01f, tmp1,
+                MLSystemID, MLComponentID, &msg2, 0, (float)GPS_speed * 0.01f, tmp,
                 ((int32_t)(rcCommand[THROTTLE] - cfg.esc_min) * 100)/(cfg.esc_max - cfg.esc_min),
                 EstAlt * 0.01f, vario * 0.01f);
             baseflight_mavlink_send_message(&msg2);
-        }
-        
-        if (++ParaLstCnt >= 10 && !PacketSent)                                  // 10Hz for Parameterlist transmission
-        {
-            ParaLstCnt = 0;
-            if (mavlink_send_paralist)
-            {
-                PacketSent = true;
-                mavlink_send_paralist = !baseflight_mavlink_send_paramlist(false);// baseflight_mavlink_send_param_lst is true when done
-            }
+            return;
         }
 
-        if (++AttiPackCnt >= 3 && !PacketSent)                                  // 30Hz for Attitude
+        if (!(cycleCNT % 10) && mavlink_send_paralist)                          // Every 100ms (10Hz) for Parameterlist transmission only
         {
-            AttiPackCnt = 0;
+            mavlink_send_paralist = !baseflight_mavlink_send_paramlist(false);  // baseflight_mavlink_send_param_lst is true when done
+            return;
+        }
+        
+        if (!(cycleCNT % 3))                                                    // every 30ms (33Hz) for Attitude
+        {
             mavlink_msg_attitude_pack(
                 MLSystemID, MLComponentID, &msg2, currentTimeMS, angle[0] * RADX10, -angle[1] * RADX10,
                 heading * RADX, 0.0f, 0.0f, 0.0f);
 	          baseflight_mavlink_send_message(&msg2);
+            return;
         }
 	  }
 }
