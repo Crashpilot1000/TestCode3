@@ -88,19 +88,19 @@ static void resetConf(void)
     cfg.version = EEPROM_CONF_VERSION;
     cfg.mixerConfiguration = MULTITYPE_QUADX;
     featureClearAll();
-//    featureSet(FEATURE_VBAT);
+    featureSet(FEATURE_VBAT);
     featureSet(FEATURE_PPM);
 //    featureSet(FEATURE_FAILSAFE);
 //    featureSet(FEATURE_LCD);
-//    featureSet(FEATURE_GPS);
+    featureSet(FEATURE_GPS);
 //    featureSet(FEATURE_PASS);                   // Just pass Throttlechannel
 //    featureSet(FEATURE_SONAR);
 
-    cfg.P8[ROLL]                  =  35;        // 40
+    cfg.P8[ROLL]                  =  45;        // 40
     cfg.I8[ROLL]                  =  30;
     cfg.D8[ROLL]                  =  30;
 
-    cfg.P8[PITCH]                 =  35;        // 40
+    cfg.P8[PITCH]                 =  45;        // 40
     cfg.I8[PITCH]                 =  30;
     cfg.D8[PITCH]                 =  30;
 
@@ -125,7 +125,7 @@ static void resetConf(void)
 //    cfg.I8[PIDPOS]                = 0;
 //    cfg.D8[PIDPOS]                = 0;
 
-//    cfg.P8[PIDPOSR]               = 20;         // POSHOLD_RATE_P * 10;
+//    cfg.P8[PIDPOSR]               = 12;         // POSHOLD_RATE_P * 10;
 //    cfg.I8[PIDPOSR]               = 8;          // POSHOLD_RATE_I * 100;
 //    cfg.D8[PIDPOSR]               = 45;         // POSHOLD_RATE_D * 1000;
 
@@ -133,7 +133,7 @@ static void resetConf(void)
 //    cfg.I8[PIDNAVR]               = 20;         // NAV_I * 100;
 //    cfg.D8[PIDNAVR]               = 80;         // NAV_D * 1000;
 
-    cfg.P8[PIDLEVEL]              = 70;         // 70
+    cfg.P8[PIDLEVEL]              = 80;         // 70
     cfg.I8[PIDLEVEL]              = 10;
     cfg.D8[PIDLEVEL]              = 50;
 
@@ -145,7 +145,7 @@ static void resetConf(void)
 
     memcpy(&cfg.align, default_align, sizeof(cfg.align));
     cfg.align_board_yaw           = 0;          // 0 = 0 Deg. 1 = 90 Deg. 2 = 180 Deg. 3 = 270 Deg Clockwise
-    cfg.mag_dec                   = 113;        // Crashpilot //cfg.acc_hdw = ACC_DEFAULT;// default/autodetect
+    cfg.mag_dec                   = 1338;        // Crashpilot //cfg.acc_hdw = ACC_DEFAULT;// default/autodetect
     cfg.mag_time                  = 1;          // (1-6) Calibration time in minutes
     cfg.mag_gain                  = 0;          // 0(default) = 1.9 GAUSS ; 1 = 2.5 GAUSS (problematic copters, will reduce 20% resolution)
     cfg.acc_hdw                   = 2;          // Crashpilot MPU6050
@@ -226,7 +226,7 @@ static void resetConf(void)
     cfg.esc_moff                  = 1000;
     cfg.esc_nfly                  = 1300;       // This is the absolute throttle that kicks off the "has landed timer" if it is too low cfg.rc_minchk + 5% is taken. Also baselinethr for Autostart, also plausibility check for initial Failsafethrottle
 //  cfg.esc_nfly                  = 0;          // This is the absolute throttle that kicks off the "has landed timer" if it is too low cfg.rc_minchk + 5% is taken.
-    cfg.esc_pwm                   = 400;
+    cfg.esc_pwm                   = 480;
     cfg.esc_nwmx                  = 1;          // NewMix: 0 = mwii style, 1 = scaled handling of maxthrottlesituations
     cfg.srv_pwm                   = 50;
     cfg.pass_mot                  = 0;          // Crashpilot: Only used with feature pass. If 0 = all Motors, otherwise specific Motor
@@ -265,14 +265,14 @@ static void resetConf(void)
     cfg.gps_type                  = 1;          // GPS_NMEA = 0, GPS_UBLOX = 1, GPS_MTK16 = 2, GPS_MTK19 = 3, GPS_UBLOX_DUMB = 4
     cfg.gps_baudrate              = 115200;     //38400; // Changed 8/6/13 to 115200;
     cfg.gps_ins_vel               = 0.6f;       // Crashpilot GPS INS The LOWER the value the closer to gps speed // Dont go to high here
-    cfg.gps_lag                   = 2000;       // GPS Lag in ms
+    cfg.gps_lag                   = 500;       // GPS Lag in ms
     cfg.gps_ph_minsat             = 6;          // Minimal Satcount for PH, PH on RTL is still done with 5Sats or more
-    cfg.gps_expo                  = 20;         // 1 - 99 % defines the actual Expo applied for GPS
-    cfg.gps_ph_settlespeed        = 10;         // 1 - 200 cm/s PH settlespeed in cm/s
-    cfg.gps_ph_brakemaxangle      = 15;         // 1 - 45 Degree Maximal Overspeedbrake
+    cfg.gps_expo                  = 5;         // 1 - 99 % defines the actual Expo applied for GPS
+    cfg.gps_ph_settlespeed        = 100;         // 1 - 200 cm/s PH settlespeed in cm/s
+    cfg.gps_ph_brakemaxangle      = 20;         // 1 - 45 Degree Maximal Overspeedbrake
     cfg.gps_ph_minbrakepercent    = 50;         // 1 - 99% minimal percent of "brakemaxangle" left over for braking. Example brakemaxangle = 6 so 50 Percent is 3..
     cfg.gps_ph_brkacc             = 40;         // [1 - 500] Is the assumed negative braking acceleration in cm/(s*s) of copter. Value is positive though. It will be a timeout. The lower the Value the longe the Timeout
-    cfg.gps_maxangle              = 35;         // 10 - 45 Degree Maximal over all GPS bank angle
+    cfg.gps_maxangle              = 40;         // 10 - 45 Degree Maximal over all GPS bank angle
     cfg.gps_wp_radius             = 200;
 //  cfg.rtl_mnh                   = 20;         // (0 - 200m) Minimal RTL hight in m, 0 disables feature
 	  cfg.rtl_mnh                   = 0;          // (0 - 200m) Minimal RTL hight in m, 0 disables feature
@@ -300,8 +300,8 @@ static void resetConf(void)
     cfg.fs_nosnr                  = 1;          // When snr_land is set to 1, it is possible to ignore that on Failsafe, because FS over a tree could turn off copter
 
     // serial (USART1) baudrate
-    cfg.serial_baudrate           = 115200;
-    cfg.tele_prot                 = 0;          // Protocol ONLY used when Armed including Baudchange if necessary. 0 (Dfault)=Keep Multiwii @CurrentUSB Baud, 1=Frsky @9600Baud, 2=Mavlink @CurrentUSB Baud, 3=Mavlink @57KBaud (like stock minimOSD wants it)
+    cfg.serial_baudrate           = 19200;
+    cfg.tele_prot                 = 2;          // Protocol ONLY used when Armed including Baudchange if necessary. 0 (Dfault)=Keep Multiwii @CurrentUSB Baud, 1=Frsky @9600Baud, 2=Mavlink @CurrentUSB Baud, 3=Mavlink @57KBaud (like stock minimOSD wants it)
 
     // LED Stuff
     cfg.LED_invert                = 0;          // Crashpilot: Inversion of LED 0&1 Partly implemented because Bootup is not affected
@@ -364,7 +364,7 @@ static void resetConf(void)
     // DaddyWalross Sonar: I DON'T KNOW! But it uses HC-SR04 so i apply the same limits (10cm-400cm) to its output
     // Sonar minimal hight must be higher (including temperature difference) than the physical lower limit of the sensor to do a proximity alert
     // NOTE: Sonar is def. not a must - have. But nice to have.
-    cfg.snr_type                  = 3;          // 0=PWM56 HC-SR04, 1=RC78 HC-SR04, 2=I2C(DaddyWalross), 3=MBPWM56, 4=MBRC78, 5=I2C(SRFxx), 6=I2C (MX12x2)
+    cfg.snr_type                  = 1;          // 0=PWM56 HC-SR04, 1=RC78 HC-SR04, 2=I2C(DaddyWalross), 3=MBPWM56, 4=MBRC78, 5=I2C(SRFxx), 6=I2C (MX12x2)
     cfg.snr_min                   = 30;         // Valid Sonar minimal range in cm (10 - 200) see warning above
     cfg.snr_max                   = 200;        // Valid Sonar maximal range in cm (50 - 700)
     cfg.snr_dbg                   = 0;          // 1 Sends Sonardata (within defined range and tilt) to debug[0] and tiltvalue to debug[1], debug[0] will be -1 if out of range/tilt. debug[2] contains raw sonaralt, like before
