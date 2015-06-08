@@ -16,7 +16,17 @@ Naze32 Harakiri10 Summer Games pre2.6
 - Removed moving average filter from D calculation. Therefor maincuthz (default 12Hz, Range 1-50Hz) becomes critical for D calculation. Higher frequency lets more ripple pass in D part.
 - Put Gyrosmoothing to floats
 - Deleted FEATURE_GYRO_SMOOTHING added gy_smrll, gy_smptc, gy_smyw instead. Now you can adjust gy_smyw for tricopter (see below).
-- Added MWII 2.3 Yaw algo, for mainpidctrl = 0
+- Added MWII 2.3 Yaw algo, reworked "I" part.
+- Added older MWII 2.1 Yaw algo as selectable parameter rc_oldyw = [0/1] 0 = multiwii 2.3 yaw (default), 1 = older yaw
+- Added Mhefnys's G-Tune in stripped down form. So there are new parameters. For further reference look in G-Tune.txt!
+  gt_loP_rll  = 20 [10..200] Lower limit of ROLL P during G tune.  Note "20" means "2.0" in the gui.
+  gt_loP_ptch = 20 [10..200] Lower limit of PITCH P during G tune. Note "20" means "2.0" in the gui.
+  gt_loP_yw   = 20 [10..200] Lower limit of YAW P during G tune.   Note "20" means "2.0" in the gui.
+  gt_hiP_rll  = 70 [0..200]  Higher limit of ROLL P during G tune. 0 Disables tuning for that axis.  Note "70" means "7.0" in the gui.
+  gt_hiP_ptch = 70 [0..200]  Higher limit of PITCH P during G tune. 0 Disables tuning for that axis. Note "70" means "7.0" in the gui.
+  gt_hiP_yw   = 70 [0..200]  Higher limit of YAW P during G tune. 0 Disables tuning for that axis.   Note "70" means "7.0" in the gui.
+  gt_pwr      = 0  [0..10]   Strength of adjustment
+- "Repaired" Horizon mode, was too tame on the "edges".
 - Imu rearrangements:
 --Reworked the mwii acc lowpassfilter stuff to proper time dependency i.e frequency filter. Therefor:
 -- acc_lpf  = 100 deleted and repaced by acc_lpfhz  = 10.0 (0.536 is equivalent to the former "100" based on 3ms cycletime)
@@ -33,6 +43,7 @@ Naze32 Harakiri10 Summer Games pre2.6
 - Rework Magcalibration. Removed old calibration and variables: mag_oldctime and mag_oldcalib.
   mag_time (1-6) will set the mag calibration time in minutes now. Default is 1.
   Tested "intelligent mag calibrating" idea but results vary too much between setups/copters that it didn't work out. Idea still in mind, maybe later..
+- align_board_yaw 0 = 0 Deg.(default) 1 = 90 Deg. 2 = 180 Deg. 3 = 270 Deg Clockwise. Theoretically no recalibration needed when changing board orientation - but better to do so.
 - Reworked Failsafe / cleanup / improved hoverthrottle for fs with barofunction. Since the throttlechannel is not valid in FS situations, a statistic average is taken gathered during the flight.
   If that average is not bigger than rc_minchk + 5% an error is assumed and the predefined fs_rcthr is taken as althold baselinethrottle.
   Thx to Hinkel for pointing out that subject here: http://www.multiwii.com/forum/viewtopic.php?f=23&t=3524&start=280#p41661
@@ -41,6 +52,13 @@ Naze32 Harakiri10 Summer Games pre2.6
 - Reorganized mainprogram, put throttlechannel/pid attenuation calculation into the rc loop
 - Reworked the Copter Timming option. The problem with the original was that on every stickinput an eeprom write was done, that is unnecessary limiting the lifetime. Now you can trim around and only 5 seconds after last
   Triminput the data are saved to eeprom. Note: While an eeprom write is scheduled and not yet done, Arming the copter is not possible.
+- Reworked the mixer upper limit handling. The overshoot is limited to throttlerange + 85% and if the throttlerange is exceeded it is scaled down now. The former mwii approach was to simply substract the overshoot and done.
+  Dynamically adjusting the scale gets better stability in those situations from my testing. This approach also makes it possible to recover from too high PIDs. That's why it's here.
+  There is a parameter in cli "esc_nwmx" that means "newmix" it is per default on ("1") but you can choose to use the multiwii handling as well with "0".
+  Note1: Going full Throttle in multicopters will always get you into more or less stability trouble.
+  Note2: TPA - users. Due to the nature of the changed full throttle behaviour of the mixer it may be resonable to reduce your TPA.
+  Note3: The normal mwii full throttle handling is also a little better (esc_nwmx = 0) because it is limited to not cut off all the PWM range.
+
 
 MAVLINK:
 - Possible stack hog deleted.
@@ -70,14 +88,15 @@ RC & LED:
    6. When the copter is disarmed the trims are saved and Air-Trim function is turned off (LED flicker for confirmation).
 -- Notes:
    When you just want to clear your trims just do the stickcommand and then arm/disarm the copter - trims are zeroed and saved.
-   When you have the Killswitch active (like rc_killt = 200ms) it is disabled during that Air-Trim flight - BUT MAKE SURE YOU ARE IN Air-Trim MODE SO WATCH THE CONFIRMATION LEDS FLICKER! 
+   When you have the Killswitch active (like rc_killt = 200ms) it is disabled during that Air-Trim flight - BUT MAKE SURE YOU ARE IN Air-Trim MODE SO WATCH THE CONFIRMATION LEDS FLICKER!
 -  FEATURE_MOTOR_STOP is deleted and replaced by rc_motor. It will decide upon the behaviour when throttle is below rc_minchk (throttlestick at low position).
    rc_motor = x [0-2] 0 is Default.
    rc_motor = 0 esc_min will be applied, the pid regulation is disabled to prevent flip on ground.
    rc_motor = 1 esc_min will be applied, the pid regulation will be ACTIVE. That prevents tipovers in the air when thrstick down, but may cause tipovers on the ground.
    rc_motor = 2 esc_moff will be applied, that means motors are off then "motor stop".
    NOTE: Baromode and Autoland. Once copter is flying (decision upon that is based on surpassing esc_nfly) in Baromode, a thrstick down will trigger Autolanding, not motor stop.
-
+-  Fixed PPSUM readout to prevent channelmixup on error (even for just one ppsum frame). Fixed Frsky 18ms 8channel ppsum problem (you can also use the frsky 27ms FW)
+-  Fixed Frsky telemetry. GPS coords reported correctly, Heading reported correctly, negative hight fix (minimal hight is zero)
 
 - RED LED:
 -- In GPS mode the red LED will ALWAYS count up the satcount starting by 5 followed by a 2 sec break. 2 blinks followed by 2sec break = 6 Sats.
@@ -97,6 +116,7 @@ Tricopter:
 Althold:
 - Sonar/Baro code rework/cleanup/Sonardriver. Sonaroffset generation improved with averaging.
 - Rework of Barofiltering
+- Improved Throttlestickhandling concerning mid detection. Hightchange has reduced variobrake.
 - SONAR hardwareproblem info/found:
 * Sudden errors with PWM Sonar readout. Keep Sonar pwm signal clear, use a ferrite and/or shielded dataline.
   Check your proper sonar function before first flight if you altered configuration with snr_debg = 1.
@@ -195,7 +215,7 @@ GPS:
    param4 = 1 If a ROI is known it will nose in on the ROI point. To use that define a ROI BEFORE defining a WP. (see ROI)
    param4 = 0 ROI is ignored, copter nose points to the next WP.
    If param4 = 1 is used and no ROI defined, it will be saved as "0".
-   
+
    Valid LAT/LON needed, otherwise the command is skipped upon save.
 
    ALT in meter will set a new targethight. That hight can be negative, if you want to fly down a canyon, loose GPS signal and crash.
@@ -491,7 +511,7 @@ Naze32 Harakiri10 Summer Games2.1
 =================================
 - Just updated the Arducopter "plain earth" bearing calculation to a little more STM like correct, spherical Bearing.
 Forumla:http://www.movable-type.co.uk/scripts/latlong.html under "BEARING"
-JavaScript: 	
+JavaScript:
 var y = Math.sin(dLon) * Math.cos(lat2);
 var x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1)*Math.cos(lat2)*Math.cos(dLon);
 var brng = Math.atan2(y, x).toDeg();
@@ -580,4 +600,4 @@ See for details: http://diydrones.com/profiles/blogs/705844:BlogPost:43438
 
 
 
-
+ 

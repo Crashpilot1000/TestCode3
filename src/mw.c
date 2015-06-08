@@ -7,7 +7,7 @@ flags_t  f;
 int16_t  debug[4];
 uint32_t currentTime   = 0;
 uint32_t currentTimeMS = 0;
-uint32_t previousTime  = 0;
+float    FLOATcycleTime = 0;
 uint8_t  vbat;                                                       // battery voltage in 0.1V steps
 float    telemTemperature1;                                          // gyro sensor temperature
 volatile uint16_t failsafeCnt   = 0;
@@ -20,8 +20,9 @@ rcReadRawDataPtr rcReadRawFunc = NULL;                               // receive 
 uint8_t  rcOptions[CHECKBOXITEMS];
 float    axisPID[3];
 float    AvgCyclTime = 1;
-static   float dynP8[3], dynD8[3];
-static   float errorGyroI[3] = { 0, 0, 0 }, errorAngleI[2] = { 0, 0 };
+static   float dynP8[2], dynD8[2];
+static   float errorGyroI[2] = { 0, 0 }, errorAngleI[2] = { 0, 0 };
+static   int32_t errorGyroI_YW = 0;
 
 // **********************
 // IMU & SENSORS
@@ -66,8 +67,8 @@ int32_t  GPS_directionToHome;                                        // directio
 uint16_t GPS_speed;                                                  // speed in cm/s
 volatile uint16_t GPS_altitude;                                      // altitude in m
 uint8_t  GPS_update = 0;                                             // it's a binary toogle to distinct a GPS position update
-float    GPS_angle[2] = { 0, 0 };                                    // it's the angles that must be applied for GPS correction
-float    Last_GPS_angle[2] = { 0, 0 };
+float    GPS_angle[2] = {0, 0};                                      // it's the angles that must be applied for GPS correction
+float    Last_GPS_angle[2] = {0, 0};
 uint16_t GPS_ground_course = 0;                                      // DEG * 10
 float    nav[2];                                                     // DEG * 100
 int16_t  maxbank10  = 1;                                             // Maximum GPS Tiltangle in degree * 10 // preset to 1 for safety to prevent div 0
@@ -131,6 +132,8 @@ static void    DoRcArmingAndBasicStuff(void);
 static void    AckTrimCheckTrimLimits(void);
 static void    computeRC(void);
 static void    GetRCandAuxfromBuf(void);
+static void    ZeroErrorAngleI(void);
+static void    calculate_Gtune(bool inirun, uint8_t ax);
 
 void pass(void)                                                             // Feature pass
 {
@@ -173,17 +176,19 @@ void loop(void)
 {
     static uint32_t RTLGeneralTimer, AltRCTimer0 = 0, BaroAutoTimer, loopTime;
     float           delta, RCfactor, rcCommandAxis;
-    float           PTerm = 0, ITerm = 0, DTerm = 0, PTermACC = 0, ITermACC = 0, ITermGYRO = 0, error = 0, prop;
-    static float    lastGyro[3] = { 0, 0, 0 }, lastDTerm[3] = { 0, 0, 0 }, FLOATcycleTime = 0;
-    static uint8_t  ThrFstTimeCenter = 0, AutolandState = 0, AutostartState = 0, HoverThrcnt, RTLstate;
+    float           PTerm = 0, ITerm = 0, DTerm = 0, PTermACC = 0, ITermACC = 0, ITermGYRO = 0, error = 0, prop = 0;
+    static float    lastGyro[2] = {0, 0}, lastDTerm[2] = {0, 0};
+    static uint8_t  ThrFstTimeCenter = 0, AutolandState = 0, AutostartState = 0, HoverThrcnt, RTLstate, ReduceBaroI = 0;
     static int8_t   Althightchange;
     static uint16_t HoverThrottle;
     static int16_t  BaroLandThrlimiter, SnrLandThrlimiter, initialThrottleHold, LastAltThrottle = 0;
-    static int16_t  DistanceToHomeMetersOnRTLstart;
-    static int16_t  AutostartTargetHight, AutostartFilterAlt, AutostartFilterVario, AutostartClimbrate;
+    static int32_t  DistanceToHomeMetersOnRTLstart;
+    static int16_t  AutostartClimbrate;
+    static int32_t  FilterVario, AutostartTargetHight, AutostartFilterAlt;
     static stdev_t  variovariance;
     float           tmp0flt;
-    int16_t         tmp0, thrdiff;
+    int32_t         tmp0, PTermYW;
+    int16_t         thrdiff;
     uint8_t         axis;
 
     if (DoGetRc50HzTimer())
@@ -257,8 +262,8 @@ void loop(void)
             case 6:                                                         // OMG Do the f** RTL now
                 rcOptions[BOXGPSHOLD] = 0;                                  // GPS hold OFF
                 rcOptions[BOXGPSHOME] = 1;                                  // RTL
-                tmp0 = (int16_t)GPS_distanceToHome - DistanceToHomeMetersOnRTLstart; // tmp0 contains flyawayvalue
-                if ((cfg.gps_rtl_flyaway && tmp0 > (int16_t)cfg.gps_rtl_flyaway) ||
+                tmp0 = (int32_t)GPS_distanceToHome - DistanceToHomeMetersOnRTLstart; // tmp0 contains flyawayvalue
+                if ((cfg.gps_rtl_flyaway && tmp0 > (int32_t)cfg.gps_rtl_flyaway) ||
                         (wp_status == WP_STATUS_DONE && ph_status == PH_STATUS_DONE)) RTLstate++;
                 break;
             case 7:                                                         // Do Autoland
@@ -281,14 +286,15 @@ void loop(void)
         {
             if (rcOptions[BOXBARO] && GroundAltInitialized && f.ARMED)
             {
-                if (!f.BARO_MODE)                                           // Initialize Baromode here if it isn't already
+                if (!f.BARO_MODE)                                               // Initialize Baromode here if it isn't already
                 {
                     Althightchange   = 0;
                     AutolandState    = 0;
                     AutostartState   = 0;
                     ThrFstTimeCenter = 0;
+                    ReduceBaroI      = 0;
                     AltHold          = EstAlt;
-                    if (FSBaroThrottle)                                     // Use Baro failsafethrottle here
+                    if (FSBaroThrottle)                                         // Use Baro failsafethrottle here
                     {
                         LastAltThrottle     = FSBaroThrottle;
                         initialThrottleHold = FSBaroThrottle;
@@ -298,18 +304,19 @@ void loop(void)
                         LastAltThrottle     = rcCommand[THROTTLE];
                         initialThrottleHold = rcCommand[THROTTLE];
                     }
-                    f.BARO_MODE = 1;                                        // Finally set baromode to initialized
+                    f.BARO_MODE = 1;                                            // Finally set baromode to initialized
                 }
 
-                if(CopterFlying)                                            // Are we somehow airborne?
+                if(CopterFlying)                                                // Are we somehow airborne?
                 {
                     if(AutostartState)
                     {
-                        if ((abs(rcData[THROTTLE] - cfg.rc_mid) > cfg.rc_dbah))// Autostartus interruptus
+                        if ((abs(rcData[THROTTLE] - cfg.rc_mid) > cfg.rc_dbah)) // Autostartus interruptus
                         {
                             AutostartState      = 0;
                             ThrFstTimeCenter    = 0;
                             Althightchange      = 0;
+                            ReduceBaroI         = 0;
                             AltHold             = EstAlt;
                             initialThrottleHold = LastAltThrottle;
                         }
@@ -317,11 +324,12 @@ void loop(void)
                     else
                     {
                         if (rcData[THROTTLE] < cfg.rc_minchk && !AutolandState) AutolandState = 1; // Start Autoland
-                        if (rcData[THROTTLE] > cfg.rc_minchk && AutolandState)// Autolandus interruptus on Userinput reset some stuff
+                        if (rcData[THROTTLE] > cfg.rc_minchk && AutolandState)  // Autolandus interruptus on Userinput reset some stuff
                         {
                             AutolandState       = 0;
                             ThrFstTimeCenter    = 0;
                             Althightchange      = 0;
+                            ReduceBaroI         = 0;
                             AltHold             = EstAlt;
                             initialThrottleHold = LastAltThrottle;
                         }
@@ -329,7 +337,7 @@ void loop(void)
                 }
                 else
                 {
-                    if (cfg.as_trgt && !AutostartState && ThrFstTimeCenter) AutostartState = 1; // Start Autostart
+                    if (cfg.as_trgt && !AutostartState && ThrFstTimeCenter == 3) AutostartState = 1; // Start Autostart
                 }
             }
             else
@@ -338,6 +346,7 @@ void loop(void)
                 AutolandState   = 0;
                 AutostartState  = 0;
                 LastAltThrottle = 0;
+                ReduceBaroI     = 0;
             }
             if (AutolandState || AutostartState)                                // Switch to Angle mode when AutoBarofunctions anyway
             {
@@ -416,11 +425,11 @@ void loop(void)
         if (cfg.mixerConfiguration == MULTITYPE_FLYING_WING || cfg.mixerConfiguration == MULTITYPE_AIRPLANE) f.HEADFREE_MODE = 0;
         if (sensors(SENSOR_ACC))
         {
-            if (rcOptions[BOXANGLE])                                            // Prevent simulan Angle and Horizon mode
+            if (rcOptions[BOXANGLE])                                            // Prevent simultan Angle and Horizon mode
             {                                                                   // In that case Angle mode will win.
                 if (!f.ANGLE_MODE)
                 {
-                    errorAngleI[ROLL] = errorAngleI[PITCH] = 0.0f;
+                    ZeroErrorAngleI();
                     f.ANGLE_MODE   = 1;
                     f.HORIZON_MODE = 0;
                 }
@@ -432,7 +441,7 @@ void loop(void)
                 {
                     if (!f.HORIZON_MODE)
                     {
-                        errorAngleI[ROLL] = errorAngleI[PITCH] = 0.0f;
+                        ZeroErrorAngleI();
                         f.HORIZON_MODE = 1;
                     }
                 }
@@ -444,6 +453,17 @@ void loop(void)
             f.ANGLE_MODE   = 0;
             f.HORIZON_MODE = 0;
         }
+
+        if (rcOptions[BOXGTUNE])
+        {
+            if (!f.GTUNE)
+            {
+                f.GTUNE = 1;
+                calculate_Gtune(true, 0);
+            }
+        }
+        else f.GTUNE = 0;
+        
         DoRcHeadfree();                                                         // Rotates Rc commands according mag and homeheading in headfreemode
         DoKillswitch();
         DoAirTrim();
@@ -465,14 +485,10 @@ void loop(void)
 
     currentTime   = micros();
     currentTimeMS = millis();
-    if (!cfg.looptime || (int32_t)(currentTime - loopTime) >= 0)
+    if ((int32_t)(currentTime - loopTime) >= 0)
     {
-        loopTime       = currentTime + cfg.looptime;
+        loopTime = currentTime + cfg.looptime;
         computeIMU();                                                           // looptime Timeloop starts here on predefined basis
-        currentTime    = micros();
-        currentTimeMS  = millis();
-        FLOATcycleTime = (float)constrain(currentTime - previousTime, 1, 10000);// 1us - 10ms
-        previousTime   = currentTime;
 
 #ifdef BARO
         if (sensors(SENSOR_BARO))                                               // The normal stuff to keep it simple
@@ -486,45 +502,54 @@ void loop(void)
         {
             getAltitudePID();                                                   // !Do not forget to calculate the Baropids...
 
-            if(AutostartState)
+            if(AutostartState > 1)
             {
-                AutostartFilterAlt   = ((AutostartFilterAlt   << 1) + AutostartFilterAlt   + (int16_t)EstAlt) >> 2;
-                AutostartFilterVario = ((AutostartFilterVario << 1) + AutostartFilterVario + (int16_t)vario)  >> 2;
-                devPush(&variovariance, (float)AutostartFilterVario);
+                AutostartFilterAlt = ((AutostartFilterAlt << 1) + AutostartFilterAlt + (int32_t)EstAlt) >> 2;
+                FilterVario        = ((FilterVario << 1)        + FilterVario        + (int32_t)vario) >> 2;
             }
             switch(AutostartState)
             {
             case 0:
                 break;
             case 1:                                                             // Initialize Autostart with relative targethight
-                AutostartTargetHight = (int16_t)EstAlt + (int16_t)cfg.as_trgt * 100;
-                AutostartFilterAlt   = (int16_t)EstAlt;
-                AutostartFilterVario = (int16_t)vario;
+                AutostartTargetHight = (int32_t)EstAlt + (int32_t)cfg.as_trgt * 100;
+                AutostartFilterAlt   = (int32_t)EstAlt;
+                FilterVario          = 0;                                       // We are standing
                 AutostartClimbrate   = (int16_t)cfg.as_lnchr << 1;
                 initialThrottleHold  = ESCnoFlyThrottle;                        // Set higher baselinethrottle than esc min.
-                devClear(&variovariance);
-                devPush(&variovariance, vario);
-                GetClimbrateTorcDataTHROTTLE(AutostartClimbrate);
-                BlockGPSAngles = true;                                          // Block GPS on the Ground
+                BlockGPSAngles       = true;                                    // Block GPS on the Ground
+                BaroAutoTimer        = currentTimeMS + 800;                     // prepare timer to settle data
                 AutostartState++;
                 break;
-            case 2:                                                             // Wait for liftoff. It is assumed when the std dev of the vario exceeds a limit or if the climbrate is beyond 50cm/s
-                if (AutostartFilterVario < 50 || ((uint8_t)devStandardDeviation(&variovariance) < cfg.as_stdev))
+            case 2:                                                             // Let things settle
+                if (currentTimeMS > BaroAutoTimer)
+                {
+                    devClear(&variovariance);
+                    GetClimbrateTorcDataTHROTTLE(AutostartClimbrate);           // Ignition...
+                    AutostartState++;
+                }
+                BlockGPSAngles = true;                                          // Block GPS on the Ground
+                break;
+            case 3:                                                             // Wait for liftoff. It is assumed when the std dev of the vario exceeds a limit or if the climbrate is beyond 50cm/s
+                devPush(&variovariance, (float)FilterVario);
+                if (FilterVario > 50 ||
+                   ((uint8_t)devStandardDeviation(&variovariance) > cfg.as_stdev) ||
+                   (AutostartFilterAlt > AutostartTargetHight + 50))
+                {
+                    CopterFlying       = true;                                  // Liftoff! Force alhold to reset virtual targethight
+                    rcData[THROTTLE]   = cfg.rc_mid;                            // We have a liftoff, force althold (reset internal altholdtarget)
+                    ThrFstTimeCenter   = 0;                                     // Force ini
+                    AutostartClimbrate = (int16_t)cfg.as_clmbr;
+                    AutostartState++;
+                }
+                else 
                 {
                     GetClimbrateTorcDataTHROTTLE(AutostartClimbrate);           // No, liftoff increase virtual targethight (like a rubberband to pull the copter off the ground)
                     BlockGPSAngles = true;                                      // Block GPS on the Ground
                 }
-                else                                                            // Liftoff! Force alhold to reset virtual targethight
-                {
-                    CopterFlying       = true;                                  // Set Copter airborne status if not already
-                    rcData[THROTTLE]   = cfg.rc_mid;                            // We have a liftoff, force althold (reset internal altholdtarget)
-                    ThrFstTimeCenter   = 0;                                     // Forc ini
-                    AutostartClimbrate = (int16_t)cfg.as_clmbr;
-                    AutostartState++;
-                }
                 break;
-            case 3:                                                             // Now climb with desired rate to targethight.
-                tmp0 = (int16_t)((float)AutostartFilterAlt + (float)AutostartFilterVario * cfg.bar_lag);// Actual predicted hight
+            case 4:                                                             // Now climb with desired rate to targethight.
+                tmp0 = (int32_t)((float)AutostartFilterAlt + (float)FilterVario * cfg.bar_lag);// Actual predicted hight
                 AutostartClimbrate = constrain((abs(AutostartTargetHight - tmp0) / 3), 10, (int16_t)cfg.as_clmbr);// Slow down when getting closer to target
                 if (AutostartFilterAlt < AutostartTargetHight)
                 {
@@ -542,34 +567,31 @@ void loop(void)
             switch (AutolandState)
             {
             case 0:                                                             // No Autoland Do nothing
-                SnrLandThrlimiter    = BaroLandThrlimiter = 0;                  // Reset it here! BaroAutoTimer = 0;
+                SnrLandThrlimiter = BaroLandThrlimiter = 0;                     // Reset it here! BaroAutoTimer = 0;
                 break;
-
             case 1:                                                             // Start Althold
-                rcData[THROTTLE]     = cfg.rc_mid;                              // Put throttlestick to middle
-                BaroAutoTimer        = currentTimeMS + HoverTimeBeforeLand;     // prepare timer
-                HoverThrcnt          = 1;                                       // Initialize Hoverthrottlestuff here
-                HoverThrottle        = DoMotorStats(true);                      // Try to get average here from flight. Returns 0 if not possible.
+                rcData[THROTTLE] = cfg.rc_mid;                                  // Put throttlestick to middle
+                BaroAutoTimer    = currentTimeMS + HoverTimeBeforeLand;         // prepare timer
+                HoverThrcnt      = 1;                                           // Initialize Hoverthrottlestuff here
+                HoverThrottle    = DoMotorStats(true);                          // Try to get average here from flight. Returns 0 if not possible.
                 if (HoverThrottle < LastAltThrottle) HoverThrottle = LastAltThrottle; // Take the bigger one as base
                 AutolandState++;
                 break;
-
             case 2:                                                             // We hover here and gather the Hoverthrottle
-                rcData[THROTTLE]     = cfg.rc_mid;                              // Put throttlestick to middle: Hover some time to gather Hoverthr
-                HoverThrottle       += LastAltThrottle;
-                HoverThrcnt ++;
+                rcData[THROTTLE] = cfg.rc_mid;                                  // Put throttlestick to middle: Hover some time to gather Hoverthr
+                HoverThrottle   += LastAltThrottle;
+                HoverThrcnt++;
                 if (HoverThrcnt == 20)
                 {
-                    HoverThrottle    = HoverThrottle / 20;                      // Average of 20 Values
+                    HoverThrottle = HoverThrottle / 20;                         // Average of 20 Values
                     if (currentTimeMS > BaroAutoTimer) AutolandState++;
                     else HoverThrcnt = 1;
                 }
                 break;
-
             case 3:                                                             // Start descent initialize Variables
                 if (cfg.al_debounce)                                            // Set BaroLandThrlimiter now, if wanted
                 {
-                    tmp0 = (int16_t)HoverThrottle - cfg.esc_min;                // tmp0 contains absolute absolute hoverthrottle
+                    tmp0 = (int32_t)HoverThrottle - (int32_t)cfg.esc_min;       // tmp0 contains absolute absolute hoverthrottle
                     if (tmp0 > 0) BaroLandThrlimiter = HoverThrottle + ((float)tmp0 * (float)cfg.al_debounce * 0.01f);// Check here to be on the safer side. Don't set BaroLandThrlimiter if something is wrong
                 }
                 GetClimbrateTorcDataTHROTTLE(-(int16_t)cfg.al_barolr);
@@ -577,7 +599,6 @@ void loop(void)
                 BaroAutoTimer = 0;
                 AutolandState++;
                 break;
-
             case 4:                                                             // Keep descending and check for landing
                 GetClimbrateTorcDataTHROTTLE(-(int16_t)cfg.al_barolr);
                 if (sensors(SENSOR_SONAR))                                      // Adjust Landing
@@ -595,7 +616,6 @@ void loop(void)
                 if (LastAltThrottle > ESCnoFlyThrottle) BaroAutoTimer = 0;      // Reset Timer
                 if ((BaroAutoTimer && currentTimeMS > BaroAutoTimer) || UpsideDown) AutolandState++; // Proceed to disarm if timeup or copter upside down
                 break;
-
             case 5:                                                             // Shut down Copter forever....
                 DisArmCopter();
                 break;
@@ -603,71 +623,108 @@ void loop(void)
 
             thrdiff = rcData[THROTTLE] - cfg.rc_mid;
             tmp0    = abs(thrdiff);
-
-            if (tmp0 < cfg.rc_dbah && !ThrFstTimeCenter)
-            {
-                AltRCTimer0 = 0;                                                // Force first Run
-                ThrFstTimeCenter = 1;
+            
+            if (!ThrFstTimeCenter)                                              // Initialize "have passed center" check
+            {                                                                   // Note: thrdiff = 0 is checked below
+                if (thrdiff > 0) ThrFstTimeCenter = 1;                          // Initial Throttlestick above middle
+                if (thrdiff < 0) ThrFstTimeCenter = 2;                          // Initial Throttlestick below middle
             }
-            if (currentTimeMS >= AltRCTimer0)                                                                         // X Hz Loop
+  
+            if (ThrFstTimeCenter != 3)
+            {
+                if (tmp0 <= cfg.rc_dbah) ThrFstTimeCenter = 3;                  // We are inside Deadband
+                else                                                            // We are outside Deadband, check if me missed a "passing middle" situation
+                {
+                    if (ThrFstTimeCenter == 1 && thrdiff < 0)
+                    {
+                        ThrFstTimeCenter = 3;
+                    }
+                    else
+                    {
+                        if (ThrFstTimeCenter == 2 && thrdiff > 0) ThrFstTimeCenter = 3;
+                    }
+                }
+                if (ThrFstTimeCenter == 3)
+                {
+                    AltRCTimer0 = 0;                                            // Force first Run
+                    ReduceBaroI = 0;
+                }
+            }
+
+            if (currentTimeMS >= AltRCTimer0)                                   // X Hz Loop
             {
                 AltRCTimer0 = currentTimeMS + 100;
-                if (ThrFstTimeCenter && tmp0 > cfg.rc_dbah)
+                if (ThrFstTimeCenter == 3)
                 {
-                    initialThrottleHold = initialThrottleHold + (BaroP / 100);							                          // Adjust Baselinethr by 1% of BaroP
-                    if (LastAltThrottle < cfg.esc_max && thrdiff > 0)
+                    if (tmp0 > cfg.rc_dbah)
                     {
-                        Althightchange = 1;
-                        AltHold += (float)(thrdiff - cfg.rc_dbah) * 0.125f;
+                        initialThrottleHold += BaroP / 100;                     // Adjust Baselinethr by 1% of BaroP
+                        if(thrdiff > 0)                                         // Note: thrdiff can not be zero here
+                        {
+                            ReduceBaroI    = 1;
+                            Althightchange = 1;
+                            if(LastAltThrottle < cfg.esc_max) AltHold += (float)(thrdiff - cfg.rc_dbah) * 0.125f;
+                        }
+                        else
+                        {
+                            ReduceBaroI    =  0;
+                            Althightchange = -1;
+                            if (LastAltThrottle > cfg.esc_min)
+                            {
+                                tmp0flt = (float)(thrdiff + cfg.rc_dbah) * 0.125f;
+                                if (!AutolandState) AltHold += tmp0flt * cfg.bar_dscl;// Descent with less rate in manual mode
+                                else AltHold += tmp0flt;
+                            }
+                        }
                     }
-                    if (LastAltThrottle > cfg.esc_min && thrdiff < 0)
+                    else                                                        // Stick is to center here
                     {
-                        Althightchange = -1;
-                        if (!AutolandState) AltHold += (float)(thrdiff + cfg.rc_dbah) * 0.125f * cfg.bar_dscl;        // Descent with less rate in manual mode
-                        else AltHold += (float)(thrdiff + cfg.rc_dbah) * 0.125f;
+                        if (Althightchange)                                     // Are we coming from a hight change? Project stoppingpoint.
+                        {
+                            tmp0flt = vario * cfg.bar_lag;                      // tmp0flt = projected cm.
+                            if(Althightchange > 0)
+                            {
+                                if (vario < 0.0f) tmp0flt = 0.0f;
+                            }
+                            else
+                            {
+                                if (vario < -0.5f) tmp0flt *= 0.5f;
+                                else tmp0flt = 0.0f;
+                            }
+                            AltHold = EstAlt + tmp0flt;
+                            initialThrottleHold = LastAltThrottle;              // This is for starting in althold otherwise the initialthr would be idle throttle
+                            ReduceBaroI    = 0;
+                            Althightchange = 0;
+                        }
                     }
                 }
-                else                                                                                                  // Stick is to center here
-                {
-                    if (ThrFstTimeCenter && Althightchange)                                                           // Are we coming from a hight change?
-                    {
-                        AltHold = EstAlt + vario * cfg.bar_lag;                                                       // We are coming from a hightchange project stoppingpoint
-                        initialThrottleHold = LastAltThrottle;                                                        // This is for starting in althold otherwise the initialthr would be idle throttle
-                    }
-                    Althightchange = 0;
-                }
-            }                                                                                                         // End of X Hz Loop
-
-
-            if (AutolandState || AutostartState || ph_status != PH_STATUS_NONE) BaroD = 0;                            // Don't do Throttle angle correction when autolanding/starting or during PH
-            if (AutostartState == 2) BaroI = BaroI >> 1;                                                              // Reduce Variobrake on Autostart during liftoffphase
-            rcCommand[THROTTLE] = constrain(initialThrottleHold + BaroP + BaroD - BaroI, cfg.esc_min, cfg.esc_max);
-
-            if (AutolandState)                                                                                        // We are Autolanding and
+            }                                                                   // End of X Hz Loop
+            if (AutolandState || AutostartState || ph_status != PH_STATUS_NONE) BaroD = 0;// Don't do Throttle angle correction when autolanding/starting or during PH
+            if (ReduceBaroI) BaroI *= 1.0f - constrain(fabs(AltHold - EstAlt) * 0.003f, 0.0f, 0.5f);// Reduce Variobrake
+            tmp0flt = BaroP + BaroD - BaroI;
+            if(tmp0flt < 0.0f) tmp0flt *= 0.9f;                                 // Reduce downpid to 90%
+            rcCommand[THROTTLE] = constrain((int32_t)tmp0flt + initialThrottleHold, cfg.esc_min, cfg.esc_max);
+            if (AutolandState)                                                  // We are Autolanding and
             {
-                if (SnrLandThrlimiter)                                                                                // Check sonarlimiter first
-                {
-                    // Sonar has given proximity alert and sonar land support is wanted
-                    BlockGPSAngles = true;                                                                            // Block GPS on the Ground
-                    if (LastAltThrottle < SnrLandThrlimiter) SnrLandThrlimiter = LastAltThrottle;                     // Adjust limiter here
+                if (SnrLandThrlimiter)                                          // Check sonarlimiter first
+                {                                                               // Sonar has given proximity alert and sonar land support is wanted
+                    BlockGPSAngles = true;                                      // Block GPS on the Ground
+                    if (LastAltThrottle < SnrLandThrlimiter) SnrLandThrlimiter = LastAltThrottle; // Adjust limiter here
                     rcCommand[THROTTLE] = min(rcCommand[THROTTLE], SnrLandThrlimiter);
                 }
                 else if (BaroLandThrlimiter) rcCommand[THROTTLE] = min(rcCommand[THROTTLE], BaroLandThrlimiter);      // Only do Barolimiter on landing, if we have no Sonarlimiter
             }
-
-
             LastAltThrottle = rcCommand[THROTTLE];
         }
 
 // Baro STATS LOGGING
         if (sensors(SENSOR_BARO) && f.ARMED)
         {
-            tmp0 = (int16_t)((int32_t)EstAlt / 100);
+            tmp0 = (int32_t)EstAlt / 100;
             if (tmp0 > cfg.MaxAltMeter) cfg.MaxAltMeter = tmp0;
             if (tmp0 < cfg.MinAltMeter) cfg.MinAltMeter = tmp0;
         }
 // Baro STATS LOGGING
-
 #endif
 
 #ifdef MAG
@@ -706,7 +763,7 @@ void loop(void)
                         Last_GPS_angle[axis] = GPS_angle[axis];
                         tmp0flt              = GPS_angle[axis] / (float)maxbank10;
                         tmp0flt              = constrain(tmp0flt, -1.0f, 1.0f); // Put in range of -1 +1
-                        GPS_angle[axis]      = (float)((int32_t)(((tmp0flt * (1.0f - GPSEXPO) + tmp0flt * tmp0flt * tmp0flt * GPSEXPO) * (float)maxbank10) + 0.5f)); // Do expo here, and some rounding and jitter cutoff
+                        GPS_angle[axis]      = SpecialIntegerRoundUp((tmp0flt * (1.0f - GPSEXPO) + tmp0flt * tmp0flt * tmp0flt * GPSEXPO) * (float)maxbank10); // Do expo here, and some rounding and jitter cutoff
                     }
                     else
                     {
@@ -719,97 +776,117 @@ void loop(void)
         else GPS_angle[0] = GPS_angle[1] = 0;                                   // Zero GPS influence on the ground
         BlockGPSAngles = false;
 
-        RCfactor = ACCDeltaTimeINS / (MainDptCut + ACCDeltaTimeINS);            // used for pt1 element
-        prop     = (float)min(max(abs(rcCommand[PITCH]), abs(rcCommand[ROLL])), 500);
-        for (axis = 0; axis < 3; axis++)
+        RCfactor  = ACCDeltaTimeINS / (MainDptCut + ACCDeltaTimeINS);           // used for pt1 element
+
+        //VERY DIRTY! IS ALREADY FIXED BUT NOT IN THIS UPLOAD BECAUSE DONE IN IMU PART THERE
+        tmp0flt  = (uint16_t)FLOATcycleTime & (uint16_t)0xFFFC;                 // Filter last 2 bit jitter
+        tmp0flt /= 3000.0f;
+        //VERY DIRTY! IS ALREADY FIXED BUT NOT IN THIS UPLOAD BECAUSE DONE IN IMU PART THERE
+
+        if (cfg.rc_oldyw)                                                       // [0/1] 0 = multiwii 2.3 yaw, 1 = older yaw
         {
-            if (axis == YAW)                                                    // We use mwii 2.3 YAW for both pid controllers
-            {
-                tmp0  = (int16_t)(((int32_t)rcCommand[axis] * (2 * (int32_t)cfg.yawRate + 40)) >> 3);
-                error = (float)tmp0 - gyroData[axis];
-                if (abs(tmp0) > 200) errorGyroI[axis] = 0.0f;
-                else errorGyroI[axis] = constrain(errorGyroI[axis] + error * (float)cfg.I8[axis] * ACCDeltaTimeINS * 0.01f, -32205.0f, 32205.0f);
-                ITerm = constrain(errorGyroI[axis], -250.0f, 250.0f);
-                PTerm = (error * (float)cfg.P8[axis]) * 0.004f;
-                if(NumberOfMotors > 3)                                          // Constrain YAW by D value if not servo driven in that case servolimits apply
-                {
-                    tmp0flt = 300.0f;
-                    if(cfg.D8[axis]) tmp0flt -= (float)cfg.D8[axis];
-                    PTerm   = constrain(PTerm, -tmp0flt, +tmp0flt);
-                }
-                DTerm = 0.0f;
-            }
+            PTermYW      = ((int32_t)cfg.P8[YAW] * (100 - (int32_t)cfg.yawRate * (int32_t)abs(rcCommand[YAW]) / 500)) / 100;
+            tmp0         = SpecialIntegerRoundUp(gyroData[YAW] * 0.25f);
+            axisPID[YAW] = rcCommand[YAW] - tmp0 * PTermYW / 80;
+            if ((abs(tmp0) > 640) || (abs(rcCommand[YAW]) > 100))
+                errorGyroI_YW = 0;
             else
             {
-                rcCommandAxis = (float)rcCommand[axis];                         // Calculate common values for pid controllers
-                if ((f.ANGLE_MODE || f.HORIZON_MODE)) error = constrain(2.0f * rcCommandAxis + GPS_angle[axis], -500.0f, +500.0f) - angle[axis] + cfg.angleTrim[axis];
-                switch (cfg.mainpidctrl)
+                error         = ((int32_t)rcCommand[YAW] * 80 / (int32_t)cfg.P8[YAW]) - tmp0;
+                errorGyroI_YW = constrain(errorGyroI_YW + (int32_t)(error * tmp0flt), -16000, +16000); // WindUp
+                axisPID[YAW] += (errorGyroI_YW / 125 * cfg.I8[YAW]) >> 6;              
+            }
+        }
+        else
+       {
+            tmp0  = ((int32_t)rcCommand[YAW] * (((int32_t)cfg.yawRate << 1) + 40)) >> 5;
+            error = tmp0 - SpecialIntegerRoundUp(gyroData[YAW] * 0.25f);          // Less Gyrojitter works actually better
+            if (abs(tmp0) > 50) errorGyroI_YW = 0;
+            else errorGyroI_YW = constrain(errorGyroI_YW + (int32_t)(error * (float)cfg.I8[YAW] * tmp0flt), -268435454, +268435454);
+            axisPID[YAW] = constrain(errorGyroI_YW >> 13, -250, +250);
+            PTermYW      = ((int32_t)error * (int32_t)cfg.P8[YAW]) >> 6;
+            if(NumberOfMotors > 3)                                              // Constrain YAW by D value if not servo driven in that case servolimits apply
+            {
+                tmp0 = 300;
+                if (cfg.D8[YAW]) tmp0 -= (int32_t)cfg.D8[YAW];
+                PTermYW = constrain(PTermYW, -tmp0, tmp0);
+            }
+            axisPID[YAW] += PTermYW;  
+        }
+        axisPID[YAW] = SpecialIntegerRoundUp(axisPID[YAW]);                     // Round up result.
+        if(f.GTUNE && f.ARMED) calculate_Gtune(false, YAW);
+        
+        if(f.HORIZON_MODE) prop = (float)min(max(abs(rcCommand[PITCH]), abs(rcCommand[ROLL])), 450) / 450.0f;
+        for (axis = 0; axis < 2; axis++)
+        {
+            rcCommandAxis = (float)rcCommand[axis];                             // Calculate common values for pid controllers
+            if ((f.ANGLE_MODE || f.HORIZON_MODE)) error = constrain(2.0f * rcCommandAxis + GPS_angle[axis], -500.0f, +500.0f) - angle[axis] + cfg.angleTrim[axis];
+            switch (cfg.mainpidctrl)
+            {
+            case 0:
+                if (f.ANGLE_MODE || f.HORIZON_MODE)
                 {
-                case 0:
-                    if (f.ANGLE_MODE || f.HORIZON_MODE)
+                    PTermACC          = error * (float)cfg.P8[PIDLEVEL] * 0.008f;
+                    tmp0flt           = (float)cfg.D8[PIDLEVEL] * 5.0f;
+                    PTermACC          = constrain(PTermACC, -tmp0flt, +tmp0flt);
+                    errorAngleI[axis] = constrain(errorAngleI[axis] + error * ACCDeltaTimeINS, -30.0f, +30.0f);
+                    ITermACC          = errorAngleI[axis] * (float)cfg.I8[PIDLEVEL] * 0.08f;
+                }
+                if (!f.ANGLE_MODE)
+                {
+                    if (abs((int16_t)gyroData[axis]) > 2560) errorGyroI[axis] = 0.0f;
+                    else
                     {
-                        PTermACC          = error * (float)cfg.P8[PIDLEVEL] * 0.008f;
-                        tmp0flt           = (float)cfg.D8[PIDLEVEL] * 5.0f;
-                        PTermACC          = constrain(PTermACC, -tmp0flt, +tmp0flt);
-                        errorAngleI[axis] = constrain(errorAngleI[axis] + error * ACCDeltaTimeINS, -30.0f, +30.0f);
-                        ITermACC          = errorAngleI[axis] * (float)cfg.I8[PIDLEVEL] * 0.08f;
+                        error            = (rcCommandAxis * 320.0f / (float)cfg.P8[axis]) - gyroData[axis];
+                        errorGyroI[axis] = constrain(errorGyroI[axis] + error * ACCDeltaTimeINS, -192.0f, +192.0f);
                     }
-                    if (!f.ANGLE_MODE)
+                    ITermGYRO = errorGyroI[axis] * (float)cfg.I8[axis] * 0.01f;
+                    if (f.HORIZON_MODE)
                     {
-                        if (abs((int16_t)gyroData[axis]) > 2560) errorGyroI[axis] = 0.0f;
-                        else
-                        {
-                            error            = (rcCommandAxis * 320.0f / (float)cfg.P8[axis]) - gyroData[axis];
-                            errorGyroI[axis] = constrain(errorGyroI[axis] + error * ACCDeltaTimeINS, -192.0f, +192.0f);
-                        }
-                        ITermGYRO = errorGyroI[axis] * (float)cfg.I8[axis] * 0.01f;
-                        if (f.HORIZON_MODE)
-                        {
-                            tmp0flt = 500.0f - prop;
-                            PTerm   = (PTermACC * tmp0flt + rcCommandAxis * prop) * 0.002;
-                            ITerm   = (ITermACC * tmp0flt + ITermGYRO     * prop) * 0.002;
-                        }
-                        else
-                        {
-                            PTerm = rcCommandAxis;
-                            ITerm = ITermGYRO;
-                        }
+                        PTerm = PTermACC + prop * (rcCommandAxis - PTermACC);
+                        ITerm = ITermACC + prop * (ITermGYRO     - ITermACC);
                     }
                     else
                     {
-                        PTerm = PTermACC;
-                        ITerm = ITermACC;
+                        PTerm = rcCommandAxis;
+                        ITerm = ITermGYRO;
                     }
-                    PTerm           -= gyroData[axis] * dynP8[axis] * 0.003f;
-                    delta            = (gyroData[axis] - lastGyro[axis]) / ACCDeltaTimeINS;
-                    lastGyro[axis]   = gyroData[axis];
-                    lastDTerm[axis] += RCfactor * (delta - lastDTerm[axis]);
-                    DTerm            = lastDTerm[axis] * dynD8[axis] * 0.00007f;
-                    break;
+                }
+                else
+                {
+                    PTerm = PTermACC;
+                    ITerm = ITermACC;
+                }
+                PTerm           -= gyroData[axis] * dynP8[axis] * 0.003f;
+                delta            = (gyroData[axis] - lastGyro[axis]) / ACCDeltaTimeINS;
+                lastGyro[axis]   = gyroData[axis];
+                lastDTerm[axis] += RCfactor * (delta - lastDTerm[axis]);
+                DTerm            = lastDTerm[axis] * dynD8[axis] * 0.00007f;
+                break;
 // Alternative Controller by alex.khoroshko http://www.multiwii.com/forum/viewtopic.php?f=8&t=3671&start=30#p37465
 // But a little modified...
-                case 1:                                                         // 1 = New mwii controller (float pimped + pt1element)
-                    if (!f.ANGLE_MODE)                                          // control is GYRO based (ACRO and HORIZON - direct sticks control is applied to rate PID
-                    {
-                        tmp0flt = (float)(((int32_t)(cfg.rollPitchRate + 27) * (int32_t)rcCommand[axis]) >> 2);
-                        if (f.HORIZON_MODE) tmp0flt += ((float)cfg.I8[PIDLEVEL] * error) * 0.16f;
-                    }
-                    else tmp0flt      = (float)cfg.P8[PIDLEVEL] * error * 0.09f;
-                    tmp0flt          -= gyroData[axis];
-                    PTerm             = (float)cfg.P8[axis] * tmp0flt * 0.002f;
-                    errorGyroI[axis] += (float)cfg.I8[axis] * tmp0flt * ACCDeltaTimeINS;
-                    errorGyroI[axis]  = constrain(errorGyroI[axis], -5500.0f, 5500.0f);// errorGyroI[axis]  = constrain(errorGyroI[axis], -17176.0f, 17176.0f);
-                    ITerm             = errorGyroI[axis] * 0.015f;
-                    delta             = (tmp0flt - lastGyro[axis]) / ACCDeltaTimeINS;
-                    lastGyro[axis]    = tmp0flt;
-                    lastDTerm[axis]  += RCfactor * (delta - lastDTerm[axis]);
-                    DTerm             = -((float)cfg.D8[axis] * lastDTerm[axis] * 0.00001f);// D scaled up by 2
-                    break;
-                }                                                               // End of Switch
-            }
-            axisPID[axis] = (float)((int32_t)(PTerm + ITerm - DTerm + 0.5f));   // Round up result.
+            case 1:                                                             // 1 = New mwii controller (float pimped + pt1element)
+                if (!f.ANGLE_MODE)                                              // control is GYRO based (ACRO and HORIZON - direct sticks control is applied to rate PID
+                {
+                    tmp0flt = (float)(((int32_t)(cfg.rollPitchRate + 27) * (int32_t)rcCommand[axis]) >> 2);
+                    if (f.HORIZON_MODE) tmp0flt += ((float)cfg.I8[PIDLEVEL] * error) * 0.16f;
+                }
+                else tmp0flt      = (float)cfg.P8[PIDLEVEL] * error * 0.09f;
+                tmp0flt          -= gyroData[axis];
+                PTerm             = (float)cfg.P8[axis] * tmp0flt * 0.002f;
+                errorGyroI[axis] += (float)cfg.I8[axis] * tmp0flt * ACCDeltaTimeINS;
+                errorGyroI[axis]  = constrain(errorGyroI[axis], -5500.0f, 5500.0f);// errorGyroI[axis]  = constrain(errorGyroI[axis], -17176.0f, 17176.0f);
+                ITerm             = errorGyroI[axis] * 0.015f;
+                delta             = (tmp0flt - lastGyro[axis]) / ACCDeltaTimeINS;
+                lastGyro[axis]    = tmp0flt;
+                lastDTerm[axis]  += RCfactor * (delta - lastDTerm[axis]);
+                DTerm             = -((float)cfg.D8[axis] * lastDTerm[axis] * 0.00001f);// D scaled up by 2
+                break;
+            }                                                                   // End of Switch
+            axisPID[axis] = SpecialIntegerRoundUp(PTerm + ITerm - DTerm);       // Round up result.
+            if (f.GTUNE && f.ARMED) calculate_Gtune(false, axis);
         }
-
+        
         if (f.ARMED)
         {
             if (rcCommand[THROTTLE] > ESCnoFlyThrottle) CopterFlying = true;
@@ -828,8 +905,8 @@ void loop(void)
         }
 
         tmp0 = rcCommand[THROTTLE];                                             // Save Original THROTTLE
-        if(f.ARMED && cfg.rc_flpsp && sensors(SENSOR_ACC) && UpsideDown && !f.ANGLE_MODE) // Putting flipsupport here
-            rcCommand[THROTTLE] = cfg.esc_min + ((rcCommand[THROTTLE] - cfg.esc_min) / (cfg.rc_flpsp + 1));// will make it possible in althold as well
+        if(f.ARMED && cfg.rc_flpsp && cfg.acc_calibrated && UpsideDown && !f.ANGLE_MODE) // Putting flipsupport here
+            rcCommand[THROTTLE] = cfg.esc_min + ((rcCommand[THROTTLE] - cfg.esc_min) / ((int16_t)cfg.rc_flpsp + 1));// will make it possible in althold as well
         mixTable();
         writeServos();
         writeMotors();
@@ -839,6 +916,126 @@ void loop(void)
     if((FLOATcycleTime - AvgCyclTime) > (AvgCyclTime * 0.05f)) serialCom(true); // If exceed 5% do reduced serial, but limited to 3 slow runs there
     else serialCom(false);
     AvgCyclTime += 0.0001f * (FLOATcycleTime - AvgCyclTime);                    // Slow Baseline cycletime Keep it out of cycletime loop.
+}
+
+/*
+****************************************************************************
+***                    G_Tune                                            ***
+****************************************************************************
+	G_Tune Mode
+	This is the multiwii implementation of ZERO-PID Algorithm
+	http://technicaladventure.blogspot.com/2014/06/zero-pids-tuner-for-multirotors.html
+	The algorithm has been originally developed by Mohammad Hefny (mohammad.hefny@gmail.com)
+
+	You may use/modify this algorithm on your own risk, kindly refer to above link in any future distribution.
+*/
+/*
+// version 1.0.0: MIN & MAX & Tuned Band
+// version 1.0.1:
+				a. error is gyro reading not rc - gyro.
+				b. OldError = Error no averaging.
+				c. No Min MAX BOUNDRY
+//	version 1.0.2:
+				a. no boundaries
+				b. I - Factor tune.
+				c. time_skip
+
+// Crashpilot: Reduced to just P tuning in a predefined range - so it is not "zero pid" anymore.
+   Tuning is limited to just work when stick is centered besides that YAW is tuned in non Acro as well.
+   See also:
+   http://diydrones.com/profiles/blogs/zero-pid-tunes-for-multirotors-part-2
+   http://www.multiwii.com/forum/viewtopic.php?f=8&t=5190
+   Gyrosetting 2000DPS
+   GyroScale = (1 / 16,4 ) * RADX(see board.h) = 0,001064225154 digit per rad/s
+
+    cfg.gt_lolimP[ROLL]   = 20; [10..200] Lower limit of ROLL P during G tune.
+    cfg.gt_lolimP[PITCH]  = 20; [10..200] Lower limit of PITCH P during G tune.
+    cfg.gt_lolimP[YAW]    = 20; [10..200] Lower limit of YAW P during G tune.
+    cfg.gt_hilimP[ROLL]   = 70; [0..200]  Higher limit of ROLL P during G tune. 0 Disables tuning for that axis.
+    cfg.gt_hilimP[PITCH]  = 70; [0..200]  Higher limit of PITCH P during G tune. 0 Disables tuning for that axis.
+    cfg.gt_hilimP[YAW]    = 70; [0..200]  Higher limit of YAW P during G tune. 0 Disables tuning for that axis.
+    cfg.gt_pwr            = 0;  [0..10] Strength of adjustment
+*/
+
+static void calculate_Gtune(bool inirun, uint8_t ax)
+{
+    static  int8_t time_skip[3];
+    static  int16_t OldError[3], result_P64[3];
+    static  int32_t AvgGyro[3];
+    int16_t error, diff_G, threshP;
+    uint8_t i;
+
+    if (inirun)
+    {
+        for (i = 0; i < 3; i++)
+        {
+            if ((cfg.gt_hilimP[i] && cfg.gt_lolimP[i] > cfg.gt_hilimP[i]) ||    // User config error disable axis for tuning
+               (NumberOfMotors < 4 && i == YAW)) cfg.gt_hilimP[i] = 0;          // Disable Yawtuning for everything below a quadcopter
+            if(cfg.P8[i] < cfg.gt_lolimP[i]) cfg.P8[i] = cfg.gt_lolimP[i];
+            result_P64[i] = (int16_t)cfg.P8[i] << 6;                            // 6 bit extra resolution for P.
+            OldError[i]   = 0;
+            time_skip[i]  = -125;
+        }
+    }
+    else
+    {
+        if(rcCommand[ax] || (ax != YAW && (f.ANGLE_MODE || f.HORIZON_MODE)))    // Block Tuning on stickinput. Always allow Gtune on YAW, Roll & Pitch only in acromode
+        {
+            OldError[ax]  = 0;
+            time_skip[ax] = -125;                                               // Some settletime after stick center. (125 + 16)* 3ms clycle = 423ms (ca.)
+        }
+        else
+        {
+            if (!time_skip[ax]) AvgGyro[ax] = 0;
+            time_skip[ax]++;
+            if (time_skip[ax] > 0)
+            {
+                if (ax == YAW) AvgGyro[ax] += 32 * ((int16_t)gyroData[ax] / 32);// Chop some jitter and average
+                else AvgGyro[ax] += 128 * ((int16_t)gyroData[ax] / 128);        // Chop some jitter and average
+            }
+
+            if (time_skip[ax] == 16)                                            // ca 48 ms
+            {
+                AvgGyro[ax] /= time_skip[ax];                                   // AvgGyro[ax] has now very clean gyrodata
+                time_skip[ax] = 0;
+
+                if (ax == YAW)
+                {
+                    threshP = 20;
+                    error   = -AvgGyro[ax];
+                }
+                else
+                {
+                    threshP = 10;
+                    error   = AvgGyro[ax];
+                }
+              
+                if (cfg.gt_hilimP[ax] && error && OldError[ax] && error != OldError[ax]) // Don't run when not needed or pointless to do so
+                {
+                    diff_G = abs(error) - abs(OldError[ax]);
+                    if ((error > 0 && OldError[ax] > 0) || (error < 0 && OldError[ax] < 0))
+                    {
+                        if (diff_G > threshP) result_P64[ax] += 64 + cfg.gt_pwr;// Shift balance a little on the plus side.
+                        else
+                        {
+                            if (diff_G < -threshP)
+                            {
+                                if (ax == YAW) result_P64[ax] -= 64 + cfg.gt_pwr;
+                                else result_P64[ax] -= 32;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        if (abs(diff_G) > threshP && ax != YAW) result_P64[ax] -= 32; // Don't use antiwobble for YAW
+                    }
+                    result_P64[ax] = constrain(result_P64[ax], (int16_t)cfg.gt_lolimP[ax] << 6, (int16_t)cfg.gt_hilimP[ax] << 6);
+                    cfg.P8[ax]     = result_P64[ax] >> 6;
+                }
+                OldError[ax] = error;
+            }
+        }
+    }
 }
 
 /*
@@ -898,6 +1095,19 @@ static void DisArmCopter(void)
 {
     f.ARMED        = 0;
     f.OK_TO_ARM    = 0;
+}
+
+static void ZeroErrorAngleI(void)
+{
+    errorAngleI[0] = 0.0f;
+    errorAngleI[1] = 0.0f;
+}
+
+int32_t SpecialIntegerRoundUp(float val)                                        // If neg value just represents a change in direction rounding to next higher number is "more" negative
+{
+    if (val > 0) return val + 0.5f;
+    else if (val < 0) return val - 0.5f;
+    else return 0;
 }
 
 void devClear(stdev_t *dev)
@@ -974,9 +1184,8 @@ static void DoRcArmingAndBasicStuff(void)
         {
             errorGyroI[0]  = 0;
             errorGyroI[1]  = 0;
-            errorGyroI[2]  = 0;
-            errorAngleI[0] = 0;
-            errorAngleI[1] = 0;
+            errorGyroI_YW  = 0;
+            ZeroErrorAngleI();
         }
         if (!f.ARMED && limit[YAW] == 1)
         {
@@ -1226,25 +1435,24 @@ static void DoThrcmmd_DynPid(void)
             if (cfg.rc_db)
             {
                 if (tmp > cfg.rc_db) tmp -= cfg.rc_db;
-                else tmp = 0;
+                else                 tmp  = 0;
             }
-            tmp2 = min(tmp / 100, PTCHLMT);                                 // Prevent out of bounds
+            tmp2         = min(tmp / 100, PTCHLMT);                         // Prevent out of bounds
             rcCommand[i] = LkpPtchRll[tmp2] + (tmp - tmp2 * 100) * (LkpPtchRll[tmp2 + 1] - LkpPtchRll[tmp2]) / 100;
-            prop1 -= (((uint32_t)cfg.rollPitchRate * tmp) / 500);
-            prop1  = prop1 * prop2 / 100;
+            prop1       -= (((uint32_t)cfg.rollPitchRate * tmp) / 500);
+            prop1        = prop1 * prop2 / 100;
+            dynP8[i]     = ((int32_t)cfg.P8[i] * prop1) / 100;              // dynI8[axis] = (uint16_t) cfg.I8[axis] * prop1 / 100;
+            dynD8[i]     = ((int32_t)cfg.D8[i] * prop1) / 100;
         }
         else                                                                // YAW
         {
             if (cfg.rc_dbyw)
             {
                 if (tmp > cfg.rc_dbyw) tmp -= cfg.rc_dbyw;
-                else tmp = 0;
+                else                   tmp  = 0;
             }
             rcCommand[i] = tmp;
-            prop1 -= (((uint32_t)cfg.yawRate * tmp) / 500);
         }
-        dynP8[i] = ((float)cfg.P8[i] * prop1) * 0.01f;                      // dynI8[axis] = (uint16_t) cfg.I8[axis] * prop1 / 100;
-        dynD8[i] = ((float)cfg.D8[i] * prop1) * 0.01f;
         if (rcData[i] < cfg.rc_mid) rcCommand[i] = -rcCommand[i];
     }
     tmp = constrain(rcData[THROTTLE], cfg.rc_minchk, 2000);

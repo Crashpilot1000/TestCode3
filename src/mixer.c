@@ -310,14 +310,10 @@ void writeAllMotors(int16_t mc)
 
 void mixTable(void)
 {
-    int16_t  maxMotor;
-    uint32_t i;
-    
-    // prevent "yaw jump" during yaw correction
-    if (NumberOfMotors > 3) axisPID[YAW] = constrain(axisPID[YAW], -100.0f - (float)abs(rcCommand[YAW]), +100.0f + (float)abs(rcCommand[YAW]));
-    if (NumberOfMotors > 1)                                                       // motors for non-servo mixes
-        for (i = 0; i < NumberOfMotors; i++)
-            motor[i] = (float)rcCommand[THROTTLE] * currentMixer[i].throttle + axisPID[PITCH] * currentMixer[i].pitch + axisPID[ROLL] * currentMixer[i].roll + cfg.tri_ydir * axisPID[YAW] * currentMixer[i].yaw;
+    int32_t  Overshoot, Range, Range85;
+    uint16_t aux[2];
+    int16_t  MaxMotor, MinMotor, limit;
+    uint8_t  i, offset;
 
     switch (cfg.mixerConfiguration)                                               // airplane / servo mixes
     {
@@ -344,13 +340,13 @@ void mixTable(void)
         motor[0] = servo[7];
         if (f.PASSTHRU_MODE)                                                      // do not use sensors for correction, simple 2 channel mixing
         {
-            servo[3]  = cfg.pitch_direction_l * (rcData[PITCH] - cfg.rc_mid) + cfg.roll_direction_l * (rcData[ROLL] - cfg.rc_mid);
-            servo[4]  = cfg.pitch_direction_r * (rcData[PITCH] - cfg.rc_mid) + cfg.roll_direction_r * (rcData[ROLL] - cfg.rc_mid);
+            servo[3] = cfg.pitch_direction_l * (rcData[PITCH] - cfg.rc_mid) + cfg.roll_direction_l * (rcData[ROLL] - cfg.rc_mid);
+            servo[4] = cfg.pitch_direction_r * (rcData[PITCH] - cfg.rc_mid) + cfg.roll_direction_r * (rcData[ROLL] - cfg.rc_mid);
         }
         else                                                                      // use sensors to correct (gyro only or gyro + acc)
         {
-            servo[3]  = cfg.pitch_direction_l * axisPID[PITCH] + cfg.roll_direction_l * axisPID[ROLL];
-            servo[4]  = cfg.pitch_direction_r * axisPID[PITCH] + cfg.roll_direction_r * axisPID[ROLL];
+            servo[3] = cfg.pitch_direction_l * axisPID[PITCH] + cfg.roll_direction_l * axisPID[ROLL];
+            servo[4] = cfg.pitch_direction_r * axisPID[PITCH] + cfg.roll_direction_r * axisPID[ROLL];
         }
         servo[3] = constrain(servo[3] + cfg.wing_left_mid, cfg.wing_left_min, cfg.wing_left_max);
         servo[4] = constrain(servo[4] + cfg.wing_right_mid, cfg.wing_right_min, cfg.wing_right_max);
@@ -359,9 +355,10 @@ void mixTable(void)
 
     if (feature(FEATURE_SERVO_TILT))                                              // do camstab
     {
-        uint16_t aux[2] = { 0, 0 };
         if ((cfg.gbl_flg & GIMBAL_NORMAL) || (cfg.gbl_flg & GIMBAL_TILTONLY)) aux[0] = rcData[AUX3] - cfg.rc_mid;
+        else aux[0] = 0;
         if (!(cfg.gbl_flg & GIMBAL_DISABLEAUX34)) aux[1] = rcData[AUX4] - cfg.rc_mid;
+        else aux[1] = 0;
         servo[0] = cfg.gbl_pmd + aux[0];
         servo[1] = cfg.gbl_rmd + aux[1];
         if (rcOptions[BOXCAMSTAB])
@@ -383,8 +380,8 @@ void mixTable(void)
 
     if (cfg.gbl_flg & GIMBAL_FORWARDAUX)
     {
-        int offset = 0;
         if (feature(FEATURE_SERVO_TILT)) offset = 2;
+        else offset = 0;
         for (i = 0; i < 4; i++) pwmWriteServo(i + offset, rcData[AUX1 + i]);
     }
 
@@ -394,15 +391,47 @@ void mixTable(void)
         else pwmWriteServo(0, LED_Value);
     }
 
-    maxMotor = motor[0];
-    for (i = 1; i < NumberOfMotors; i++) if (motor[i] > maxMotor) maxMotor = motor[i];
+    if (NumberOfMotors > 3)                                                       // prevent "yaw jump" during yaw correction
+    {
+        limit        = abs(rcCommand[YAW]) + 100;
+        axisPID[YAW] = (float)constrain((int32_t)axisPID[YAW], -limit, +limit);
+    }
+
+    Range    = cfg.esc_max - cfg.esc_min;
+    Range85  = (Range * 109) >> 7;                                                // ca. 85% overshoot range for Maximal motor value. Note: This could be a constant as well
+    MinMotor = cfg.esc_min;
+    MaxMotor = cfg.esc_max;
+    if (NumberOfMotors > 1)                                                       // motors for non-servo mixes
+    {
+        limit = cfg.esc_max + Range85;
+        for (i = 0; i < NumberOfMotors; i++)
+        {
+            motor[i] = (float)rcCommand[THROTTLE] * currentMixer[i].throttle + axisPID[PITCH] * currentMixer[i].pitch + axisPID[ROLL] * currentMixer[i].roll + cfg.tri_ydir * axisPID[YAW] * currentMixer[i].yaw;
+            if (motor[i] < MinMotor) MinMotor = motor[i];
+            motor[i] = constrain(motor[i], cfg.esc_min, limit);
+            if (motor[i] > MaxMotor) MaxMotor = motor[i];
+        }
+        limit    = max(cfg.esc_min - (Range85 >> 1), 0);                          // Use Halfrange85limit for Minimal motor value influence
+        MinMotor = max(MinMotor, limit);
+    }
+
+    if (MaxMotor > cfg.esc_max)
+    {
+        if(cfg.esc_nwmx) Overshoot = (Range << 10) / (int32_t)(MaxMotor - MinMotor);// 0 = mwii style, 1 = scaled handling of maxthrottlesituations
+        else Overshoot = MaxMotor - cfg.esc_max;
+    }
+    else Overshoot = 0;
     for (i = 0; i < NumberOfMotors; i++)
     {
-        if (maxMotor > cfg.esc_max) motor[i] -= maxMotor - cfg.esc_max;   // this is a way to still have good gyro corrections if at least one motor reaches its max.
-        motor[i] = constrain(motor[i], cfg.esc_min, cfg.esc_max);
+        if(Overshoot)
+        {
+            if(cfg.esc_nwmx) motor[i] = cfg.esc_min + (((int32_t)(motor[i] - cfg.esc_min) * Overshoot) >> 10);
+            else motor[i] -= Overshoot;
+            motor[i] = constrain(motor[i], cfg.esc_min, cfg.esc_max);
+        }
         if ((rcData[THROTTLE]) < cfg.rc_minchk)
         {
-            if(!cfg.rc_motor) motor[i] = cfg.esc_min;                     // cfg.rc_motor [0-2] Behaviour when thr < rc_minchk: 0= minthrottle no regulation, 1= minthrottle&regulation, 2= Motorstop 
+            if(!cfg.rc_motor) motor[i] = cfg.esc_min;                             // cfg.rc_motor [0-2] Behaviour when thr < rc_minchk: 0= minthrottle no regulation, 1= minthrottle&regulation, 2= Motorstop 
             else if(cfg.rc_motor == 2) motor[i] = cfg.esc_moff;
         }
         if (!f.ARMED) motor[i] = cfg.esc_moff;

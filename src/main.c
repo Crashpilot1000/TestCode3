@@ -150,7 +150,6 @@ int main(void)
         SensorDetectAndINI();                           // drop out any sensors that don't seem to work, init all the others. halt if gyro is dead.
         imuInit();                                      // Mag is initialized inside imuInit
         if (feature(FEATURE_VBAT)) batteryInit();       // Check battery type/voltage
-        previousTime = micros();                        // Initialize some other variables here before the "real thing"
         AvgCyclTime  = (float)cfg.looptime;             // Reduce runup on Inirun
         f.SMALL_ANGLES_25 = 1;
         if(cfg.stat_clear) ClearStats();

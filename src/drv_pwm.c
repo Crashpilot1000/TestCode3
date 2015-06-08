@@ -404,23 +404,40 @@ void TIM4_IRQHandler(void)
     pwmTIMxHandler(TIM4, PWM11); // PWM11..14
 }
 
+// Contains detection & fix for the "8 channels in 18ms Frsky problem" see:
+// http://diydrones.com/profiles/blogs/why-frsky-cppm-signal-is-so-disappointing
+// http://forums.openpilot.org/topic/16146-cc3d-with-frsky-8-channels-in-cppm-mode/
+// Tested on: Frsky D8R-II and Frsky D4FR
 static void ppmCallback(uint8_t port, uint16_t capture)
 {
-    static uint16_t now, last = 0;
-    static uint8_t chan = 0;
-    uint16_t diff;
+    uint16_t        newval = capture;
+    static uint16_t last = 0, frametime = 0;
+    static uint8_t  chan = 0, goodcnt = 0, frsky_problemcnt = 0;                    // Frsky 18ms on 8 Channel Problem Autodetection
+    uint16_t        diff = newval - last;
+    bool            sync = diff > 2700;                                             // rcgroups.com/forums/showpost.php?p=21996147&postcount=3960 "So, if you use 2.5ms or higher as being the reset for the PPM stream start, you will be fine. I use 2.7ms just to be safe."
+    last = newval;
 
-    last = now;
-    now  = capture;
-    diff = now - last;
+    if (frsky_problemcnt == 30) sync |= goodcnt == 8;                               // FrSky 18ms Fix, force sync after 8 good channels in a row
+    else frametime += diff;
 
-    if (diff > 2700)   // Per http://www.rcgroups.com/forums/showpost.php?p=21996147&postcount=3960 "So, if you use 2.5ms or higher as being the reset for the PPM stream start, you will be fine. I use 2.7ms just to be safe."
+    if (sync)
     {
+        if (frsky_problemcnt != 30)
+        {
+            if (frametime < 18300 && goodcnt == 8) frsky_problemcnt++;
+            else frsky_problemcnt = 0;
+            frametime = 0;            
+        }
         chan = 0;
+        goodcnt = 0;
     }
     else
     {
-        if (diff > 750 && diff < 2250 && chan < MAX_RC_CHANNELS) captures[chan] = diff;// 750 to 2250 ms is our 'valid' channel range
+        if (diff > 750 && diff < 2250 && goodcnt == chan)                           // Only capture if channel order is correct and Range: 750 to 2250 ms
+        {
+            if (chan < MAX_RC_CHANNELS) captures[chan] = diff;                      // Wanted and presented channelnumbers can be different.
+            goodcnt++;
+        } else goodcnt = 0;
         chan++;
         failsafeCnt = 0;
     }
@@ -445,71 +462,9 @@ static void pwmCallback(uint8_t port, uint16_t capture)
     }
 }
 
-/* ORIGINAL FOR REFERENCE
-bool pwmInit(drv_pwm_config_t *init)
+void pwmInit(drv_pwm_config_t *init)
 {
-    int i = 0;
-    const uint8_t *setup;
-
-    // this is pretty hacky shit, but it will do for now. array of 4 config maps, [ multiPWM multiPPM airPWM airPPM ]
-    if (init->airplane)
-        i = 2; // switch to air hardware config
-    if (init->usePPM)
-        i++; // next index is for PPM
-
-    setup = hardwareMaps[i];
-
-    for (i = 0; i < MAX_PORTS; i++) {
-        uint8_t port = setup[i] & 0x0F;
-        uint8_t mask = setup[i] & 0xF0;
-
-        if (setup[i] == 0xFF) // terminator
-            break;
-
-        // skip UART ports for GPS
-        if (init->useUART && (port == PWM3 || port == PWM4))
-            continue;
-
-        // skip ADC for powerMeter if configured
-        if (init->adcChannel && (init->adcChannel == port))
-            continue;
-
-        // hacks to allow current functionality
-        if (mask & (TYPE_IP | TYPE_IW) && !init->enableInput)
-            mask = 0;
-
-        if (init->useServos && !init->airplane) {
-            // remap PWM9+10 as servos (but not in airplane mode LOL)
-            if (port == PWM9 || port == PWM10)
-                mask = TYPE_S;
-        }
-
-        if (init->extraServos && !init->airplane) {
-            // remap PWM5..8 as servos when used in extended servo mode
-            if (port >= PWM5 && port <= PWM8)
-                mask = TYPE_S;
-        }
-
-        if (mask & TYPE_IP) {
-            pwmInConfig(port, ppmCallback, 0);
-            numInputs = 8;
-        } else if (mask & TYPE_IW) {
-            pwmInConfig(port, pwmCallback, numInputs);
-            numInputs++;
-        } else if (mask & TYPE_M) {
-            motors[numMotors++] = pwmOutConfig(port, 1000000 / init->motorPwmRate, PULSE_1MS);
-        } else if (mask & TYPE_S) {
-            servos[numServos++] = pwmOutConfig(port, 1000000 / init->servoPwmRate, PULSE_1MS);
-        }
-    }
-
-    return false;
-}
-*/
-
-bool pwmInit(drv_pwm_config_t *init)
-{
-    uint8_t i = 0;
+    uint8_t i = 0, port, mask;
     const uint8_t *setup;
 
     // this is pretty hacky shit, but it will do for now. array of 4 config maps, [ multiPWM multiPPM airPWM airPPM ]
@@ -520,8 +475,8 @@ bool pwmInit(drv_pwm_config_t *init)
 
     for (i = 0; i < MAX_PORTS; i++)
     {
-        uint8_t port = setup[i] & 0x0F;
-        uint8_t mask = setup[i] & 0xF0;                        // Mask = TYPE_IP, TYPE_IW, TYPE_M, TYPE_S
+        port = setup[i] & 0x0F;
+        mask = setup[i] & 0xF0;                                // Mask = TYPE_IP, TYPE_IW, TYPE_M, TYPE_S
 
         if (setup[i] == 0xFF) break;                           // terminator
 
@@ -568,9 +523,10 @@ bool pwmInit(drv_pwm_config_t *init)
         case TYPE_S:                                           // Servo
             servos[numServos++] = pwmOutConfig(port, 1000000 / init->servoPwmRate, PULSE_1MS);
             break;
+        default:
+            break;
         }
     }
-    return false;
 }
 
 void pwmWriteMotor(uint8_t index, uint16_t value)

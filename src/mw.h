@@ -191,6 +191,7 @@ enum   // This is limited to 32 Boxes!!
     BOXBEEPERON,
     BOXHEADADJ,
     BOXOSD,
+    BOXGTUNE,
     CHECKBOXITEMS
 };
 
@@ -208,7 +209,8 @@ static const char boxnames[] =
     "HEADFREE;"
     "BEEPER;"
     "HEADADJ;"
-    "OSD SW;";
+    "OSD SW;"
+    "GTUNE;";
 
 static const char pidnames[] =
     "ROLL;"
@@ -278,6 +280,7 @@ typedef struct config_t
     float    angleTrim[2];                  // trim
     // sensor-related stuff
     int8_t   align[3][3];                   // acc, gyro, mag alignment (ex: with sensor output of X, Y, Z, align of 1 -3 2 would return X, -Z, Y)
+    uint8_t  align_board_yaw;               // 0 = 0 Deg. 1 = 90 Deg. 2 = 180 Deg. 3 = 270 Deg Clockwise
     uint8_t  acc_hdw;                       // Which acc hardware to use on boards with more than one device
     float    acc_lpfhz;                     // Set the Low Pass Filter factor for ACC in Hz.
     uint16_t gy_lpf;                        // mpuX050 LPF setting (TODO make it work on L3GD as well)
@@ -317,6 +320,12 @@ typedef struct config_t
     uint16_t rc_killt;                      // Time in ms when your arm switch becomes a Killswitch, 0 disables
     uint8_t  rc_flpsp;                      // [0-1] When enabled(1) and upside down in acro or horizon mode only half throttle is applied
     uint8_t  rc_motor;                      // [0-2] Behaviour when thr < rc_minchk: 0= minthrottle no regulation, 1= minthrottle&regulation, 2= Motorstop 
+    uint8_t  rc_oldyw;                      // [0/1] 0 = multiwii 2.3 yaw, 1 = older yaw
+
+    // G-tune related configuration
+    uint8_t  gt_lolimP[3];                  // [10..200] Lower limit of P during G tune
+    uint8_t  gt_hilimP[3];                  // [0..200] Higher limit of P during G tune. 0 Disables tuning for that axis.
+    int8_t   gt_pwr;                        // [0..10] Strength of adjustment
 
     // Failsafe related configuration
     uint8_t  fs_delay;                      // Guard time for failsafe activation after signal lost. 1 step = 0.1sec - 1sec in example (10)
@@ -331,6 +340,7 @@ typedef struct config_t
     uint16_t esc_max;                       // This is the maximum value for the ESCs at full power this value can be increased up to 2000
     uint16_t esc_moff;                      // This is the value for the ESCs when they are not armed. In some cases, this value must be lowered down to 900 for some specific ESCs
     uint16_t esc_nfly;                      // This is the absolute throttle that kicks off the "has landed timer" if it is too low cfg.rc_minchk is taken.
+    uint8_t  esc_nwmx;                      // 0 = mwii style, 1 = scaled handling of maxthrottlesituations
     uint16_t esc_pwm;                       // The update rate of motor outputs (50-498Hz)
     uint16_t srv_pwm;                       // The update rate of servo outputs (50-498Hz)
     uint8_t  pass_mot;                      // Crashpilot: Only used with feature pass. If 0 = all Motors, otherwise specific Motor
@@ -461,8 +471,8 @@ typedef struct flags_t
     uint8_t PASSTHRU_MODE;
     uint8_t GPS_FIX_HOME;
     uint8_t SMALL_ANGLES_25;
+    uint8_t GTUNE;
 } flags_t;
-
 
 extern bool     SerialRCRX;   // MAIN
 
@@ -481,7 +491,7 @@ extern float    accSmooth[3];
 extern float    accADC[3], gyroADC[3], magADCfloat[3];
 extern uint32_t currentTime;
 extern uint32_t currentTimeMS;
-extern uint32_t previousTime;
+extern float    FLOATcycleTime;
 extern bool     calibratingA;
 extern bool     calibratingM;
 
@@ -605,6 +615,7 @@ void     LD1_ON(void);
 void     devClear(stdev_t *dev);
 void     devPush(stdev_t *dev, float x);
 float    devStandardDeviation(stdev_t *dev);
+int32_t  SpecialIntegerRoundUp(float val);
 
 // IMU
 void     imuInit(void);
